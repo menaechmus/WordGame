@@ -1,0 +1,2 @@
+# Keep LF line endings everywhere, including the word lists
+* text=auto eol=lf

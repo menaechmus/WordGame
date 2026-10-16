@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Game tests</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, Consolas, monospace; margin: 1rem; background: #111; color: #ddd; }
+  .fail { color: #ff7a7a; }
+  .pass { color: #8fd694; }
+</style>
+</head>
+<body>
+<h1 id="summary">Running…</h1>
+<pre id="out"></pre>
+<script type="module">
+import { TILES, VALUES, COUNTS, BLANK, RACK_SIZE, rackValue, newBag, shuffle } from './js/tiles.js';
+import { SIZE, CENTER, PREMIUMS, LETTER_MULT, WORD_MULT, row, col, at, squareName, playName, emptyBoard } from './js/board.js';
+import { buildDictionary, isWord, loadDictionary, WORD_LISTS } from './js/dictionary.js';
+import { evaluatePlay, wordCells, BINGO } from './js/rules.js';
+import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './js/game.js';
+
+const results = [];
+const notes = [];
+
+function test(name, body) {
+  try {
+    body();
+    results.push({ name, ok: true });
+  } catch (error) {
+    results.push({ name, ok: false, error: error.message });
+  }
+}
+
+function equal(actual, expected, label = 'value') {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  if (a !== e) throw new Error(`${label}: expected ${e}, got ${a}`);
+}
+
+function throws(body, label) {
+  try {
+    body();
+  } catch {
+    return;
+  }
+  throw new Error(`${label}: expected an error`);
+}
+
+// Small seeded generator so the random games are the same on every run.
+function seeded(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// "H8" -> 112
+function square(name) {
+  return at(Number(name.slice(1)) - 1, name.charCodeAt(0) - 65);
+}
+
+// Hands out tile numbers for letters, each number once. Lower case asks for
+// a blank standing for that letter.
+function tileSource() {
+  const free = TILES.map((_, id) => id);
+  return letter => {
+    const wanted = letter === letter.toLowerCase() ? BLANK : letter;
+    const i = free.findIndex(id => TILES[id] === wanted);
+    if (i < 0) throw new Error(`no ${wanted} tile left`);
+    return free.splice(i, 1)[0];
+  };
+}
+
+// The tiles for `word` laid from square `from`, across or down, stepping
+// over squares already filled (their letters must match).
+function lay(board, take, word, from, across) {
+  const step = across ? 1 : SIZE;
+  const placements = [];
+  let index = square(from);
+  for (const letter of word) {
+    if (board[index]) {
+      if (board[index].letter !== letter.toUpperCase()) throw new Error(`${squareName(index)} holds ${board[index].letter}`);
+    } else {
+      placements.push({ index, id: take(letter), letter: letter.toUpperCase() });
+    }
+    index += step;
+  }
+  return placements;
+}
+
+// Writes letters straight onto a board, as if played earlier.
+function preset(board, take, word, from, across) {
+  for (const tile of lay(board, take, word, from, across)) board[tile.index] = { id: tile.id, letter: tile.letter };
+  return board;
+}
+
+const dict = await loadDictionary(WORD_LISTS.full);
+const common = await loadDictionary(WORD_LISTS.common);
+const valid = word => isWord(dict, word);
+
+// ---- Tiles --------------------------------------------------------------
+
+test('tiles: 100 tiles worth 187 points, two of them blank', () => {
+  equal(TILES.length, 100, 'tiles');
+  equal(TILES.reduce((sum, letter) => sum + VALUES[letter], 0), 187, 'points');
+  equal(COUNTS[BLANK], 2, 'blanks');
+  equal(VALUES[BLANK], 0, 'blank value');
+});
+
+test('tiles: the usual letter counts and values', () => {
+  const counts = 'A9 B2 C2 D4 E12 F2 G3 H2 I9 J1 K1 L4 M2 N6 O8 P2 Q1 R6 S4 T6 U4 V2 W2 X1 Y2 Z1';
+  const values = 'A1 B3 C3 D2 E1 F4 G2 H4 I1 J8 K5 L1 M3 N1 O1 P3 Q10 R1 S1 T1 U1 V4 W4 X8 Y4 Z10';
+  equal(Object.entries(COUNTS).filter(([l]) => l !== BLANK).map(([l, n]) => l + n).join(' '), counts, 'counts');
+  equal(Object.entries(VALUES).filter(([l]) => l !== BLANK).map(([l, n]) => l + n).join(' '), values, 'values');
+});
+
+test('tiles: a new bag holds every tile once, in a seeded order', () => {
+  const bag = newBag(seeded(1));
+  equal([...bag].sort((a, b) => a - b), TILES.map((_, id) => id), 'tiles');
+  equal(newBag(seeded(1)), bag, 'same seed, same bag');
+  if (JSON.stringify(newBag(seeded(2))) === JSON.stringify(bag)) throw new Error('different seeds gave the same bag');
+});
+
+test('tiles: rack value counts a blank as nothing', () => {
+  const take = tileSource();
+  equal(rackValue([take('Q'), take('z'), take('A')]), 11, 'Q + blank + A');
+});
+
+// ---- Board --------------------------------------------------------------
+
+test('board: 8 triple words, 17 double words, 12 triple letters, 24 double letters', () => {
+  const count = kind => PREMIUMS.filter(p => p === kind).length;
+  equal([count('TW'), count('DW'), count('TL'), count('DL')], [8, 17, 12, 24], 'premiums');
+});
+
+test('board: premium squares are where they belong', () => {
+  const kinds = { A1: 'TW', H1: 'TW', O15: 'TW', H8: 'DW', B2: 'DW', E5: 'DW', N14: 'DW', F2: 'TL', B6: 'TL', J10: 'TL', D1: 'DL', G3: 'DL', A4: 'DL', H4: 'DL', G7: 'DL', L15: 'DL', B1: '', H2: '', G8: '' };
+  for (const [name, kind] of Object.entries(kinds)) equal(PREMIUMS[square(name)], kind, name);
+  equal(CENTER, square('H8'), 'centre');
+});
+
+test('board: premiums are the same turned any way', () => {
+  for (let i = 0; i < SIZE * SIZE; i++) {
+    const [r, c] = [row(i), col(i)];
+    for (const [r2, c2] of [[c, r], [SIZE - 1 - r, c], [r, SIZE - 1 - c]]) {
+      if (PREMIUMS[at(r2, c2)] !== PREMIUMS[i]) throw new Error(`${squareName(i)} and ${squareName(at(r2, c2))} differ`);
+    }
+  }
+});
+
+test('board: multipliers and names', () => {
+  equal([LETTER_MULT[square('F2')], LETTER_MULT[square('D1')], LETTER_MULT[square('A1')]], [3, 2, 1], 'letter');
+  equal([WORD_MULT[square('A1')], WORD_MULT[square('H8')], WORD_MULT[square('F2')]], [3, 2, 1], 'word');
+  equal([squareName(0), squareName(224), playName(square('D8'), true), playName(square('D8'), false)], ['A1', 'O15', '8D', 'D8'], 'names');
+});
+
+// ---- Dictionary ---------------------------------------------------------
+
+test('dictionary: a small list', () => {
+  const small = buildDictionary('cat\r\ncats\nACT\n\nx\nzoologicallyyyyy\ncat\nno spaces\n', 'dog');
+  equal(small.size, 4, 'words (one-letter, too long, repeated and two-word lines skipped)');
+  equal(['CAT', 'cats', 'act', 'Dog', 'CA', 'X', 'catss', ''].map(word => isWord(small, word)), [true, true, true, true, false, false, false, false], 'lookups');
+});
+
+test('dictionary: the full list', () => {
+  equal(dict.size, 168559, 'ENABLE 2-15 letters plus the added words');
+  for (const word of ['QI', 'ZA', 'KI', 'OI', 'FE', 'OK', 'EW', 'QIS', 'ZAS', 'AA', 'XU', 'QUIXOTIC', 'JOURNEY', 'OXYPHENBUTAZONE']) {
+    if (!valid(word)) throw new Error(`${word} missing`);
+  }
+  for (const word of ['QX', 'TEH', 'ZZZZ', 'A', 'I']) {
+    if (valid(word)) throw new Error(`${word} accepted`);
+  }
+  notes.push(`full list: ${dict.size} words, ${dict.nodes} nodes`);
+});
+
+test('dictionary: common words are everyday words, all of them valid', () => {
+  for (const word of ['CATS', 'PLAYED', 'RUNNING', 'BIGGER', 'ZEBRAS', 'QUIXOTIC']) {
+    if (!isWord(common, word)) throw new Error(`${word} missing from the common list`);
+  }
+  for (const word of ['AA', 'XU', 'QI', 'ZA', 'QAT', 'OE']) {
+    if (isWord(common, word)) throw new Error(`${word} counted as common`);
+  }
+  notes.push(`common list: ${common.size} words`);
+});
+
+// ---- Rules: placement ---------------------------------------------------
+
+const errorOf = (board, placements) => evaluatePlay(board, placements, valid).error;
+
+test('rules: the first play must cover the centre with two or more tiles', () => {
+  const take = tileSource();
+  equal(errorOf(emptyBoard(), []), 'Place some tiles first.', 'nothing');
+  equal(errorOf(emptyBoard(), lay(emptyBoard(), take, 'CAT', 'A1', true)), 'The first word must cover the centre star.', 'off centre');
+  equal(errorOf(emptyBoard(), lay(emptyBoard(), take, 'A', 'H8', true)), 'The first word needs at least two letters.', 'one tile');
+});
+
+test('rules: tiles in a line, no gaps, joined to the board', () => {
+  const take = tileSource();
+  const board = preset(emptyBoard(), take, 'CAT', 'G8', true);
+  const bent = [...lay(board, take, 'A', 'G9', true), ...lay(board, take, 'T', 'H10', true)];
+  equal(errorOf(board, bent), 'Tiles must go in one row or one column.', 'bent');
+  const gappy = [...lay(board, take, 'A', 'G9', true), ...lay(board, take, 'E', 'G11', true)];
+  equal(errorOf(board, gappy), 'Leave no gaps between your tiles.', 'gap');
+  equal(errorOf(board, lay(board, take, 'DOG', 'A1', true)), 'Your word must join the tiles already on the board.', 'apart');
+  equal(errorOf(board, lay(board, take, 'S', 'A1', true)), 'Your word must join the tiles already on the board.', 'lone tile');
+  equal(errorOf(board, [{ index: square('H8'), id: take('A'), letter: 'A' }]), 'That square is already taken.', 'taken');
+});
+
+test('rules: words not in the list are named, with the score still worked out', () => {
+  const take = tileSource();
+  const result = evaluatePlay(emptyBoard(), lay(emptyBoard(), take, 'XQZ', 'H8', true), valid);
+  equal([result.ok, result.invalid, result.error, result.score], [false, ['XQZ'], 'XQZ is not in the word list.', 56], 'result');
+});
+
+// ---- Rules: scoring -----------------------------------------------------
+
+const scoreOf = (board, placements, check = valid) => {
+  const result = evaluatePlay(board, placements, check);
+  if (!result.ok) throw new Error(result.error);
+  return result.score;
+};
+
+test('rules: first plays double on the centre star', () => {
+  const first = (word, from, across) => scoreOf(emptyBoard(), lay(emptyBoard(), tileSource(), word, from, across));
+  equal(first('CAT', 'G8', true), 10, 'CAT');
+  equal(first('QUIZ', 'H8', false), 44, 'QUIZ down');
+  equal(first('ZEBRA', 'D8', true), 52, 'ZEBRA, Z on a double letter');
+});
+
+test('rules: using all seven tiles adds 50', () => {
+  const take = tileSource();
+  const result = evaluatePlay(emptyBoard(), lay(emptyBoard(), take, 'JOURNEY', 'H8', true), valid);
+  equal([result.ok, result.bingo, result.score], [true, true, 36 + BINGO], 'JOURNEY');
+});
+
+test('rules: a blank scores nothing', () => {
+  const take = tileSource();
+  equal(scoreOf(emptyBoard(), lay(emptyBoard(), take, 'cAT', 'G8', true)), 4, 'blank C');
+});
+
+test('rules: premiums count once, under new tiles only', () => {
+  const take = tileSource();
+  const board = preset(emptyBoard(), take, 'CAT', 'G8', true);
+  equal(scoreOf(board, lay(board, take, 'CATS', 'G8', true)), 6, 'CATS');
+});
+
+test('rules: a play alongside scores every word it makes', () => {
+  const take = tileSource();
+  const board = preset(emptyBoard(), take, 'TOE', 'G8', true);
+  const result = evaluatePlay(board, lay(board, take, 'AX', 'G9', true), valid);
+  equal(result.words.map(word => [word.text, word.score]), [['AX', 10], ['TA', 3], ['OX', 9]], 'words');
+  equal([result.score, result.name, result.across], [22, '9G', true], 'total');
+});
+
+test('rules: one tile can make a word each way', () => {
+  const take = tileSource();
+  const board = preset(preset(emptyBoard(), take, 'BE', 'G8', true), take, 'NO', 'I6', false);
+  const result = evaluatePlay(board, lay(board, take, 'D', 'I8', true), valid);
+  equal(result.words.map(word => [word.text, word.score]), [['BED', 6], ['NOD', 4]], 'words');
+  equal(result.score, 10, 'total');
+});
+
+test('rules: one tile that only makes a word downwards runs down', () => {
+  const take = tileSource();
+  const board = preset(emptyBoard(), take, 'NO', 'I6', false);
+  const result = evaluatePlay(board, lay(board, take, 'D', 'I8', true), valid);
+  equal([result.ok, result.across, result.words.map(word => word.text), result.name], [true, false, ['NOD'], 'I6'], 'down');
+});
+
+test('rules: two word premiums multiply (x4 and x9)', () => {
+  let take = tileSource();
+  const row4 = preset(emptyBoard(), take, 'AAAAAAA', 'E4', true);
+  equal(scoreOf(row4, lay(row4, take, 'AAAAAAAAA', 'D4', true), null), 36, 'double-double');
+  take = tileSource();
+  const row1 = preset(emptyBoard(), take, 'AAAAAA', 'B1', true);
+  equal(scoreOf(row1, lay(row1, take, 'AAAAAAAA', 'A1', true), null), 72, 'triple-triple');
+});
+
+test('rules: the letter breakdown shows each premium', () => {
+  const take = tileSource();
+  const result = evaluatePlay(emptyBoard(), lay(emptyBoard(), take, 'ZEBRA', 'D8', true), valid);
+  const [word] = result.words;
+  equal(word.letters.map(item => `${item.letter}${item.value}x${item.mult}`).join(' '), 'Z10x2 E1x1 B3x1 R1x1 A1x1', 'letters');
+  equal([word.sum, word.wordMult, word.score], [26, 2, 52], 'word');
+});
+
+test('rules: wordCells stops at the edges of the board', () => {
+  const take = tileSource();
+  const board = preset(preset(emptyBoard(), take, 'AB', 'O1', false), take, 'CD', 'A2', true);
+  const letterAt = i => board[i]?.letter;
+  equal(wordCells(letterAt, square('O2'), true), [square('O2')], 'no wrap from O2 to A3');
+  equal(wordCells(letterAt, square('A2'), true), [square('A2'), square('B2')], 'no wrap from A2 back to O1');
+});
+
+// ---- Game ---------------------------------------------------------------
+
+const two = [{ name: 'Ann' }, { name: 'Bob' }];
+
+// Every tile is in exactly one place: the bag, a rack or the board.
+function conserved(game) {
+  const ids = [...game.bag, ...game.players.flatMap(p => p.rack), ...game.board.filter(Boolean).map(cell => cell.id)];
+  equal([...ids].sort((a, b) => a - b), TILES.map((_, id) => id), 'every tile once');
+}
+
+// A game whose next player holds `letters` (lower case for blanks), with the
+// rest of the tiles left in the bag.
+function riggedGame(letters, players = two, seed = 1) {
+  const game = newGame({ mode: 'local', players }, seeded(seed));
+  const me = game.players[game.turn];
+  game.bag.push(...me.rack);
+  me.rack = [];
+  for (const letter of letters) {
+    const wanted = letter === letter.toLowerCase() ? BLANK : letter;
+    const i = game.bag.findIndex(id => TILES[id] === wanted);
+    me.rack.push(game.bag.splice(i, 1)[0]);
+  }
+  return game;
+}
+
+// Placements for `word` using the current player's own tiles.
+function layFromRack(game, word, from, across) {
+  const rack = [...game.players[game.turn].rack];
+  const take = letter => {
+    const wanted = letter === letter.toLowerCase() ? BLANK : letter;
+    const i = rack.findIndex(id => TILES[id] === wanted);
+    if (i < 0) throw new Error(`no ${wanted} on the rack`);
+    return rack.splice(i, 1)[0];
+  };
+  return lay(game.board, take, word, from, across);
+}
+
+test('game: a new game deals seven tiles each and draws for first', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const players = [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }].slice(0, 2 + (seed % 3));
+    const game = newGame({ mode: 'local', players }, seeded(seed));
+    equal(game.players.map(p => p.rack.length), players.map(() => RACK_SIZE), 'racks');
+    equal(game.bag.length, 100 - RACK_SIZE * players.length, 'bag');
+    conserved(game);
+    const last = game.events[0].rounds.at(-1);
+    const rank = draw => (TILES[draw.id] === BLANK ? '' : TILES[draw.id]);
+    const best = last.map(rank).sort()[0];
+    equal(last.filter(draw => rank(draw) === best).map(draw => draw.player), [game.first], `seed ${seed}: first player drew the best tile`);
+    equal(game.turn, game.first, 'first to move');
+  }
+});
+
+test('game: a play scores, refills the rack and passes the turn', () => {
+  const game = riggedGame('QUIZERS');
+  const me = game.turn;
+  play(game, me, layFromRack(game, 'QUIZ', 'H8', false), valid);
+  equal(game.players[me].score, 44, 'score');
+  equal(game.players[me].rack.length, RACK_SIZE, 'rack refilled');
+  equal(game.bag.length, 100 - 2 * RACK_SIZE - 4, 'bag');
+  equal(game.turn, 1 - me, 'turn');
+  equal(game.moves.at(-1), { player: me, type: 'play', name: 'H8', word: 'QUIZ', words: [{ text: 'QUIZ', score: 44 }], tiles: [112, 127, 142, 157], score: 44, bingo: false }, 'move');
+  equal(game.events.map(event => event.type), ['play'], 'events');
+  conserved(game);
+});
+
+test('game: illegal plays are refused and change nothing', () => {
+  const game = riggedGame('QUIZERS');
+  const me = game.turn;
+  const before = JSON.stringify(game);
+  throws(() => play(game, me, layFromRack(game, 'QUIZ', 'A1', true), valid), 'off centre');
+  throws(() => play(game, me, layFromRack(game, 'ZQ', 'H8', true), valid), 'not a word');
+  throws(() => play(game, 1 - me, layFromRack(game, 'QUIZ', 'H8', true), valid), 'wrong player');
+  const foreign = game.bag.find(id => TILES[id] === 'E');
+  throws(() => play(game, me, [{ index: CENTER, id: foreign, letter: 'E' }, ...layFromRack(game, 'S', 'I8', true)], valid), 'tile not on the rack');
+  equal(JSON.stringify(game), before, 'unchanged');
+});
+
+test('game: a blank needs a letter', () => {
+  const game = riggedGame('aTEN');
+  const placements = layFromRack(game, 'aT', 'H8', true);
+  throws(() => play(game, game.turn, placements.map(tile => ({ ...tile, letter: BLANK })), valid), 'no letter');
+  play(game, game.turn, placements, valid);
+  equal(game.board[CENTER].letter, 'A', 'blank shows A');
+});
+
+test('game: exchanging needs seven in the bag, keeps the rack full and scores nothing', () => {
+  const game = newGame({ mode: 'local', players: two }, seeded(3));
+  const me = game.turn;
+  const old = game.players[me].rack.slice(0, 3);
+  exchange(game, me, old, seeded(4));
+  equal([game.players[me].rack.length, game.bag.length, game.scoreless, game.turn], [RACK_SIZE, 86, 1, 1 - me], 'after');
+  if (old.some(id => game.players[me].rack.includes(id))) throw new Error('an old tile came straight back');
+  conserved(game);
+  game.bag.length = 6;
+  equal(canExchange(game), false, 'six left');
+  throws(() => exchange(game, game.turn, game.players[game.turn].rack.slice(0, 1)), 'six in the bag');
+});
+
+test('game: six scoreless turns between two end the game, racks counted against their owners', () => {
+  const game = newGame({ mode: 'local', players: two }, seeded(5));
+  for (let i = 0; i < 5; i++) pass(game, game.turn);
+  equal(game.phase, 'play', 'five passes');
+  pass(game, game.turn);
+  equal(game.phase, 'over', 'six passes');
+  const left = game.players.map(p => rackValue(p.rack));
+  equal(game.players.map(p => p.score), left.map(points => -points), 'scores');
+  equal(game.ending, { out: null, adjustments: left.map(points => -points) }, 'ending');
+  equal(game.winners, left[0] === left[1] ? [0, 1] : [left[0] < left[1] ? 0 : 1], 'winners');
+});
+
+test('game: with three players it takes nine scoreless turns', () => {
+  const game = newGame({ mode: 'local', players: [...two, { name: 'Cy' }] }, seeded(6));
+  for (let i = 0; i < 8; i++) pass(game, game.turn);
+  equal(game.phase, 'play', 'eight');
+  pass(game, game.turn);
+  equal(game.phase, 'over', 'nine');
+});
+
+test('game: going out takes the other racks', () => {
+  const game = riggedGame('AT');
+  const me = game.turn;
+  const other = 1 - me;
+  game.board[square('G8')] = { id: game.bag.splice(game.bag.findIndex(id => TILES[id] === 'C'), 1)[0], letter: 'C' };
+  game.bag = [];
+  game.players[other].score = 10;
+  const theirs = rackValue(game.players[other].rack);
+  play(game, me, layFromRack(game, 'CAT', 'G8', true), valid);
+  equal(game.phase, 'over', 'over');
+  equal(game.ending, { out: me, adjustments: me === 0 ? [theirs, -theirs] : [-theirs, theirs] }, 'ending');
+  equal(game.players[me].score, 10 + theirs, 'went out (CAT doubled on the centre)');
+  equal(game.players[other].score, 10 - theirs, 'stuck with tiles');
+});
+
+test('game: a tie is a shared win', () => {
+  const game = newGame({ mode: 'local', players: two }, seeded(7));
+  for (const player of game.players) player.rack = player.rack.slice(0, 1).map(() => TILES.indexOf('E'));
+  for (let i = 0; i < 6; i++) pass(game, game.turn);
+  equal(game.winners, [0, 1], 'both');
+});
+
+test('game: arranging a rack keeps the same tiles', () => {
+  const game = newGame({ mode: 'local', players: two }, seeded(8));
+  const rack = game.players[0].rack;
+  arrange(game, 0, [...rack].reverse());
+  equal(game.players[0].rack, [...rack].reverse(), 'reversed');
+  throws(() => arrange(game, 0, rack.slice(1)), 'one short');
+  throws(() => arrange(game, 0, [...rack.slice(1), game.bag[0]]), 'a tile from the bag');
+  noteHint(game, 0);
+  equal(game.players[0].hints, 1, 'hints');
+});
+
+test('game: survives a JSON round trip mid-game', () => {
+  let game = riggedGame('QUIZERS');
+  play(game, game.turn, layFromRack(game, 'QUIZ', 'H8', false), valid);
+  game = JSON.parse(JSON.stringify(game));
+  pass(game, game.turn);
+  conserved(game);
+  equal([game.moves.length, game.scoreless], [2, 1], 'moves');
+});
+
+// ---- Report -------------------------------------------------------------
+
+const failed = results.filter(r => !r.ok);
+const summary = `${failed.length ? 'FAILED' : 'PASSED'} ${results.length - failed.length}/${results.length}`;
+document.title = summary;
+const heading = document.getElementById('summary');
+heading.textContent = summary;
+heading.className = failed.length ? 'fail' : 'pass';
+document.getElementById('out').textContent = [
+  ...results.map(r => (r.ok ? `ok    ${r.name}` : `FAIL  ${r.name}\n      ${r.error}`)),
+  '',
+  ...notes,
+].join('\n');
+</script>
+<script>
+  // A module that fails to load never reaches the report above.
+  addEventListener('error', event => {
+    document.title = 'FAILED to run';
+    document.getElementById('summary').textContent = `FAILED to run: ${event.message}`;
+  });
+  addEventListener('unhandledrejection', event => {
+    document.title = 'FAILED to run';
+    document.getElementById('summary').textContent = `FAILED to run: ${event.reason?.message ?? event.reason}`;
+  });
+</script>
+</body>
+</html>
