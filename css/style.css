@@ -381,20 +381,34 @@ svg .line {
   font-size: 0.68rem;
 }
 
-/* The board: fifteen squares a side with a hairline between them. */
-.board {
-  display: grid;
+/* The board: fifteen squares a side with a hairline between them. It sits in
+   a frame of its own size; zoomed in, the board grows and the frame scrolls. */
+.board-frame {
   flex: none;
-  grid-template-columns: repeat(15, 1fr);
-  gap: 1px;
   width: var(--side);
   height: var(--side);
   margin: 0 auto;
+  border-radius: 6px;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
+  --zoom: 1;
+}
+
+.board-frame.zoomed {
+  overflow: auto;
+  overscroll-behavior: contain;
+  --zoom: 1.85;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 1px;
+  width: calc(var(--side) * var(--zoom));
+  height: calc(var(--side) * var(--zoom));
   padding: 2px;
   border-radius: 6px;
   background: var(--grid);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
-  --t: calc((var(--side) - 18px) / 15);
+  --t: calc((var(--side) * var(--zoom) - 18px) / 15);
 }
 
 .cell {
@@ -480,6 +494,25 @@ svg .line {
   box-shadow: 0 0 0 2px var(--gold), 0 0 10px 2px rgba(246, 201, 85, 0.6);
 }
 
+/* The keyboard's typing cursor, with an arrow for the way it types. */
+.cell.cursor {
+  z-index: 2;
+  box-shadow: 0 0 0 2px var(--last), 0 0 8px 2px rgba(42, 143, 176, 0.6);
+}
+
+.cell.cursor::after {
+  position: absolute;
+  right: 4%;
+  bottom: 0;
+  color: var(--last);
+  font-size: calc(var(--t) * 0.42);
+  font-weight: 800;
+  content: '→';
+  pointer-events: none;
+}
+
+.cell.cursor[data-dir='down']::after { content: '↓'; }
+
 .status {
   display: grid;
   flex: 1;
@@ -492,14 +525,32 @@ svg .line {
   text-align: center;
 }
 
-.moves-btn {
+.status-buttons {
+  display: flex;
+  gap: 8px;
   margin-top: 3px;
-  padding: 2px 12px;
+}
+
+.pill {
+  min-height: 28px;
+  padding: 2px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: none;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.78rem;
+}
+
+.pill[aria-pressed='true'] {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* Zoom is for small boards: phones, upright or on their side. */
+.pill.zoom { display: none; }
+
+@media (max-width: 599px), (max-height: 540px) {
+  .pill.zoom { display: block; }
 }
 
 #prompt { color: var(--muted); }
@@ -663,7 +714,7 @@ svg .line {
     padding: 6px 10px;
   }
 
-  .board { grid-area: board; }
+  .board-frame { grid-area: board; }
 
   .status {
     grid-area: status;

@@ -8,14 +8,24 @@
 // handlers.canDrop(target, press) may it land there? target: { kind: 'cell', index }
 //                                 or { kind: 'rack', position }
 // handlers.drop(press, target)    it was let go over a target (null: nowhere useful)
-// handlers.tapRack(id), handlers.tapCell(index)
+// handlers.tapRack(id), handlers.tapCell(index, pointerType)
+//
+// `frame` is the board's frame, which scrolls when the board is zoomed in:
+// a tile dragged near its edge scrolls it along.
 
 const DRAG_START = 6; // pixels a pointer travels before a press counts as a drag
+const EDGE = 30; // pixels from the frame's edge where a drag starts it scrolling
+const SCROLL_STEP = 9; // pixels the frame scrolls each animation frame
 
-export function setupInput({ board, rack, handlers }) {
+export function setupInput({ board, rack, frame, handlers }) {
   let press = null; // { pointer, x, y, id, from, index, element, touch }
-  let drag = null; // { ghost, target, slots, home }
+  let drag = null; // { ghost, target, slots, home, x, y, scrolling }
   let swallowClick = false;
+  let lastPointer = 'mouse'; // whether the latest tap was a finger, a mouse or a pen
+
+  addEventListener('pointerdown', event => {
+    lastPointer = event.pointerType;
+  }, true);
 
   function pressed(event, element, from) {
     if (press || event.button > 0) return;
@@ -107,7 +117,36 @@ export function setupInput({ board, rack, handlers }) {
     const y2 = press.touch ? y - drag.ghost.offsetHeight * 0.8 : y;
     drag.ghost.style.left = `${x}px`;
     drag.ghost.style.top = `${y2}px`;
+    drag.x = x;
+    drag.y = y2;
     setTarget(findTarget(x, y2));
+    if (!drag.scrolling && edgeDirection(x, y2)) {
+      drag.scrolling = true;
+      requestAnimationFrame(scrollFrame);
+    }
+  }
+
+  // Which way a zoomed board should scroll for a tile held at (x, y): towards
+  // whichever edges it is close to, as long as it is over the board.
+  function edgeDirection(x, y) {
+    if (frame.scrollWidth <= frame.clientWidth) return null;
+    const box = frame.getBoundingClientRect();
+    if (x < box.left || x > box.right || y < box.top || y > box.bottom) return null;
+    const dx = x < box.left + EDGE ? -1 : x > box.right - EDGE ? 1 : 0;
+    const dy = y < box.top + EDGE ? -1 : y > box.bottom - EDGE ? 1 : 0;
+    return dx || dy ? { dx, dy } : null;
+  }
+
+  function scrollFrame() {
+    const direction = drag && edgeDirection(drag.x, drag.y);
+    if (!direction) {
+      if (drag) drag.scrolling = false;
+      return;
+    }
+    frame.scrollLeft += direction.dx * SCROLL_STEP;
+    frame.scrollTop += direction.dy * SCROLL_STEP;
+    setTarget(findTarget(drag.x, drag.y));
+    requestAnimationFrame(scrollFrame);
   }
 
   function endDrag() {
@@ -170,7 +209,7 @@ export function setupInput({ board, rack, handlers }) {
 
   board.addEventListener('click', event => {
     const cell = event.target.closest('.cell');
-    if (cell) handlers.tapCell(Number(cell.dataset.index));
+    if (cell) handlers.tapCell(Number(cell.dataset.index), lastPointer);
   });
 
   // A long press would otherwise open the browser's own menu.

@@ -100,14 +100,19 @@
     <div class="bag" title="Tiles left in the bag"><b id="bag-count"></b><small>left</small></div>
   </header>
 
-  <div id="board" class="board" role="grid" aria-label="Board"></div>
+  <div id="board-frame" class="board-frame">
+    <div id="board" class="board" role="group" aria-label="Board"></div>
+  </div>
 
   <div class="status">
     <div role="status" aria-live="polite">
       <p id="events"></p>
       <p id="prompt"></p>
     </div>
-    <button id="btn-moves" class="moves-btn" hidden>Moves</button>
+    <div class="status-buttons">
+      <button id="btn-moves" class="pill" hidden>Moves</button>
+      <button id="btn-zoom" class="pill zoom" aria-pressed="false">Zoom</button>
+    </div>
   </div>
 
   <div class="rack-row">
@@ -232,7 +237,8 @@
       <li><b>Or not.</b> Instead of playing you can swap tiles for new ones (while the bag still holds seven) or pass.</li>
       <li><b>The end.</b> When the bag is empty and someone uses their last tile, the game ends: everyone loses the value of the tiles they still hold, and the player who went out gains it all. Three rounds in a row without a score also end the game.</li>
     </ol>
-    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and the magnifier checks whether a word is in the list. On a keyboard, Enter plays and Escape takes your tiles back.</p>
+    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and the magnifier checks whether a word is in the list. On a phone, Zoom (or a double-tap on an empty square) enlarges the board.</p>
+    <p class="muted">With a keyboard: click a square and type the word. Click the square again to type downwards. Shift and a letter lays a blank as that letter. Backspace takes back the last letter, Enter plays and Escape takes your tiles back.</p>
     <button class="btn primary" data-close>Got it</button>
   </div>
 </div>

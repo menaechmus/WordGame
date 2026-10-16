@@ -3,7 +3,7 @@
 // and keys into actions.
 
 import { TILES, VALUES, BLANK, isBlank, shuffle } from './tiles.js';
-import { CENTER, PREMIUMS } from './board.js';
+import { SIZE, SQUARES, CENTER, PREMIUMS, row, col, squareName } from './board.js';
 import { isWord } from './dictionary.js';
 import { evaluatePlay } from './rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './game.js';
@@ -15,7 +15,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '0.4.0';
+const VERSION = '1.0.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -24,6 +24,8 @@ const GAME_KEY = 'wordgame.game';
 const STATS_KEY = 'wordgame.stats';
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const LABELS = { TW: '3W', DW: '2W', TL: '3L', DL: '2L' };
+const PREMIUM_NAMES = { TW: 'triple word', DW: 'double word', TL: 'triple letter', DL: 'double letter' };
+const DOUBLE_TAP_MS = 320;
 
 const $ = id => document.getElementById(id);
 
@@ -92,6 +94,9 @@ let shownHints = []; // the plays listed in the hints box
 let counting = null; // while a play is counted out: { held, text, run }
 let skipClick = false; // the tap that skipped a count should do nothing else
 let drawn = new Set(); // tiles just drawn onto the rack, to slide in
+let cursor = null; // the keyboard's typing cursor: { index, across }
+let typed = []; // squares filled by typing, newest last, for Backspace
+let lastTap = { index: -1, time: 0 }; // for telling a double-tap on the board
 
 setMuted(!settings.sound);
 
@@ -128,8 +133,15 @@ function buildBoard() {
   $('board').innerHTML = PREMIUMS.map((kind, i) => {
     const classes = ['cell', kind.toLowerCase(), i === CENTER && 'star'].filter(Boolean).join(' ');
     const label = i === CENTER ? '★' : (LABELS[kind] ?? '');
-    return `<div class="${classes}" data-index="${i}"><span class="label">${label}</span></div>`;
+    return `<div class="${classes}" data-index="${i}" role="img" aria-label="${squareLabel(i, null)}"><span class="label" aria-hidden="true">${label}</span></div>`;
   }).join('');
+}
+
+// What a screen reader says for a square: "H8, double word" or "H8, Q".
+function squareLabel(index, tile) {
+  if (tile) return `${squareName(index)}, ${tile.letter === BLANK ? 'blank' : tile.letter}${isBlank(tile.id) && tile.letter !== BLANK ? ' (blank)' : ''}`;
+  const kind = PREMIUM_NAMES[PREMIUMS[index]];
+  return `${squareName(index)}${index === CENTER ? ', centre star' : ''}${kind ? `, ${kind}` : ''}`;
 }
 
 // `letter` is the letter shown, which for a blank is the one chosen for it
@@ -191,10 +203,14 @@ function drawBoard(result) {
       cell.dataset.key = key;
       cell.querySelector('.tile')?.remove();
       if (tile) cell.insertAdjacentHTML('beforeend', tileHtml(tile.id, tile.letter));
+      cell.setAttribute('aria-label', squareLabel(index, tile));
     }
     cell.classList.toggle('pending', laid.has(index));
     cell.classList.toggle('last', !laid.has(index) && last.has(index));
     cell.classList.toggle('bad', bad.has(index));
+    const here = cursor?.index === index && canAct();
+    cell.classList.toggle('cursor', here);
+    if (here) cell.dataset.dir = cursor.across ? 'across' : 'down';
   }
 }
 
@@ -447,6 +463,8 @@ function commit(action, append = false) {
     return;
   }
   pending = [];
+  typed = [];
+  cursor = null;
   selected = null;
   notice = '';
   resultsShown = true;
@@ -468,6 +486,7 @@ function commit(action, append = false) {
   const said = describe(game.events).length;
   if (played && !reducedMotion()) counting = { held, text: played.result.words[0].text, skipped: false, said };
   render();
+  if (played) showSquares(played.result.words[0].cells); // a zoomed board shows the play
   drawn = new Set();
   if (counting) countOut(played);
   else afterTurn(played);
@@ -663,6 +682,7 @@ function returnTile(index, position = null) {
 
 function recall() {
   pending = [];
+  typed = [];
   selected = null;
   notice = '';
   render();
@@ -713,7 +733,18 @@ function tapRack(id) {
   render();
 }
 
-function tapCell(index) {
+// A tap on a square: lays the tile picked from the rack, or takes back a tile
+// laid this turn. With nothing picked, a double-tap of a finger zooms the
+// board, and a click of a mouse puts the typing cursor there (a second click
+// turns it to type downwards).
+function tapCell(index, pointerType = 'mouse') {
+  const now = performance.now();
+  const doubled = pointerType === 'touch' && lastTap.index === index && now - lastTap.time < DOUBLE_TAP_MS;
+  lastTap = doubled ? { index: -1, time: 0 } : { index, time: now };
+  if (doubled && selected === null && isFree(index) && zoomOffered()) {
+    toggleZoom(index);
+    return;
+  }
   if (!canAct()) return;
   const tile = pending.find(laid => laid.index === index);
   if (tile) {
@@ -721,7 +752,87 @@ function tapCell(index) {
     else returnTile(index);
   } else if (selected !== null && isFree(index)) {
     placeTile(selected, index);
+  } else if (pointerType !== 'touch' && isFree(index)) {
+    cursor = { index, across: cursor?.index === index ? !cursor.across : true };
+    render();
   }
+}
+
+// ---- Zoom -----------------------------------------------------------------
+
+const zoomOffered = () => matchMedia('(max-width: 599px), (max-height: 540px)').matches;
+
+// Zooms the board in or out. Zooming in centres the frame on `index`, or
+// else on the tiles being laid, the last play or the centre star.
+function toggleZoom(index = null) {
+  const frame = $('board-frame');
+  const zoomed = frame.classList.toggle('zoomed');
+  $('btn-zoom').setAttribute('aria-pressed', zoomed);
+  if (zoomed) showSquares([index ?? pending[0]?.index ?? game.moves.findLast(move => move.type === 'play')?.tiles[0] ?? CENTER]);
+}
+
+// Scrolls a zoomed board so the middle of `squares` is in the middle of the
+// frame, as far as the board's edges allow.
+function showSquares(squares) {
+  const frame = $('board-frame');
+  if (!frame.classList.contains('zoomed') || !squares.length) return;
+  const rows = squares.map(row);
+  const cols = squares.map(col);
+  const middle = (list, size) => ((Math.min(...list) + Math.max(...list) + 1) / 2 / SIZE) * size;
+  frame.scrollLeft = middle(cols, frame.scrollWidth) - frame.clientWidth / 2;
+  frame.scrollTop = middle(rows, frame.scrollHeight) - frame.clientHeight / 2;
+}
+
+// ---- Typing ---------------------------------------------------------------
+
+// Lays a tile for `letter` at the cursor: one of that letter from the rack,
+// or a blank standing for it when there is none (or Shift is held). The
+// cursor then moves on past any tiles already down.
+function typeLetter(letter, wantBlank) {
+  if (!cursor || !canAct() || !isFree(cursor.index)) return;
+  const showing = rackTiles(viewer());
+  const id = (wantBlank ? undefined : showing.find(tile => TILES[tile] === letter)) ?? showing.find(isBlank);
+  if (id === undefined) {
+    notice = `There is no ${letter} on your rack.`;
+    render();
+    return;
+  }
+  pending.push({ index: cursor.index, id, letter });
+  typed.push(cursor.index);
+  selected = null;
+  notice = '';
+  playSound('place');
+  const step = cursor.across ? 1 : SIZE;
+  const atEdge = i => (cursor.across ? col(i) === SIZE - 1 : i + SIZE >= SQUARES);
+  let next = cursor.index;
+  while (!isFree(next) && !atEdge(next)) next += step;
+  cursor = { ...cursor, index: next };
+  render();
+  showSquares([cursor.index]);
+}
+
+// Backspace: takes back the last typed tile and puts the cursor there.
+function untype() {
+  const index = typed.pop();
+  if (index === undefined || !canAct()) return;
+  pending = pending.filter(tile => tile.index !== index);
+  cursor = { ...cursor, index };
+  notice = '';
+  render();
+}
+
+function moveCursor(key) {
+  const { index } = cursor;
+  const moves = {
+    ArrowLeft: [col(index) > 0 ? index - 1 : index, true],
+    ArrowRight: [col(index) < SIZE - 1 ? index + 1 : index, true],
+    ArrowUp: [index >= SIZE ? index - SIZE : index, false],
+    ArrowDown: [index + SIZE < SQUARES ? index + SIZE : index, false],
+  };
+  const [next, across] = moves[key];
+  cursor = { index: next, across };
+  render();
+  showSquares([next]);
 }
 
 function reveal() {
@@ -786,6 +897,7 @@ const dialogOpen = () => DIALOGS.some(id => !$(id).hidden);
 const input = setupInput({
   board: $('board'),
   rack: $('rack'),
+  frame: $('board-frame'),
   handlers: {
     canDrag: from => (from === 'board' ? canAct() : !covered() && !isAi(viewer()) && game.phase === 'play'),
     canDrop: (target, press) => {
@@ -818,6 +930,7 @@ function showMenu() {
   stopAi();
   skipCount();
   counting = null;
+  cursor = null;
   for (const group of document.querySelectorAll('.choice')) {
     for (const button of group.children) {
       button.setAttribute('aria-pressed', parseValue(button.dataset.value) === settings[group.dataset.setting]);
@@ -846,6 +959,10 @@ function showMenu() {
 function start(saved = null) {
   game = saved ?? newGame({ mode: settings.mode, difficulty: settings.difficulty, players: playersFor() });
   pending = [];
+  typed = [];
+  cursor = null;
+  $('board-frame').classList.remove('zoomed');
+  $('btn-zoom').setAttribute('aria-pressed', false);
   selected = null;
   notice = '';
   revealedTo = null;
@@ -933,6 +1050,7 @@ $('btn-confirm').addEventListener('click', () => {
 
 $('btn-stats').addEventListener('click', showStats);
 $('btn-moves').addEventListener('click', showMoves);
+$('btn-zoom').addEventListener('click', () => toggleZoom());
 
 // The first press arms the button, the second erases.
 $('btn-reset').addEventListener('click', () => {
@@ -1000,11 +1118,32 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {
     if (!$('picker').hidden) closePicker();
     else if (dialogOpen()) for (const id of DIALOGS) $(id).hidden = true;
-    else if (game && !$('table').hidden && pending.length) recall();
+    else if (game && !$('table').hidden) {
+      cursor = null;
+      recall();
+    }
     return;
   }
-  if (event.target.matches('input') || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.target.matches?.('input') || event.ctrlKey || event.metaKey || event.altKey) return;
   if (!game || $('table').hidden || dialogOpen() || !$('gameover').hidden) return;
+  // With the typing cursor on the board, letters lay tiles.
+  if (cursor && canAct()) {
+    if (/^[a-z]$/i.test(event.key)) {
+      event.preventDefault();
+      typeLetter(event.key.toUpperCase(), event.shiftKey);
+      return;
+    }
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      untype();
+      return;
+    }
+    if (event.key.startsWith('Arrow')) {
+      event.preventDefault();
+      moveCursor(event.key);
+      return;
+    }
+  }
   if (event.key === 'Enter' && event.target !== $('btn-menu')) {
     event.preventDefault(); // Enter always plays, whichever button has focus
     if (covered()) reveal();

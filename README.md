@@ -4,25 +4,23 @@ A crossword tile game for the browser: a 15 × 15 board with premium squares, 10
 
 It is a static page: plain HTML, CSS and JavaScript modules, with no build step and no dependencies.
 
-This is a work in progress. Next to come: a zoom for the board on phones, typing words in from a keyboard, and finishing touches.
-
 ## Play
 
-- Against the computer, Easy and Medium keep to everyday words; Hard knows every word in the list and thinks about the tiles it keeps.
-- **Hint** lists the five best plays for your tiles; tap one to lay it on the board. Hints can be switched off on the menu.
-- The magnifier looks up whether a word is in the list, with a link to its meaning. It shows while **Word check** is on.
 - Tap a tile on your rack and then a square, or drag the tile there. Tap a tile you have laid to take it back, or drag it somewhere else. **Recall** takes them all back.
 - Drag tiles along the rack to arrange them, or press **Shuffle**.
 - A blank asks which letter it should be. Tap it again on the board to change its mind.
 - The **Play** button shows what the tiles laid so far would score.
 - Each play is counted out on the board: every tile pops as its points are added, a tile on a 2L or 3L square jumps, a word on a 2W or 3W square jumps as a whole, and a play using all seven tiles sets the word bouncing. Tap anywhere to skip the count. Devices set to reduce motion skip it always.
-- Sound effects can be switched off with **Sound** on the menu.
+- **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
+- Against the computer, Easy and Medium keep to everyday words; Hard knows every word in the list and thinks about the tiles it keeps.
+- Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
+- **Hint** lists the five best plays for your tiles; tap one to lay it on the board. Hints can be switched off on the menu.
+- **Word check** on the menu marks words that are not in the list as you lay them, and shows the magnifier, which looks up whether a word is in the list (with a link to its meaning). With word check off, a word is only checked when you press Play.
+- On a phone, **Zoom** (or a double-tap on an empty square) enlarges the board; drag the board to look around it.
 - **Moves**, under the messages, lists every turn of the game so far with each player's running total.
 - **Statistics** on the menu shows your record against each computer level, results between people by name, best plays and games, totals, and the last twenty games.
-- **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
-- Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
-- **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.
-- Keyboard: `Enter` plays, `Escape` takes your tiles back.
+- Sound effects can be switched off with **Sound** on the menu.
+- Keyboard: click a square and type the word; click the square again to type downwards. Shift and a letter lays a blank as that letter. The arrow keys move the cursor, `Backspace` takes back the last letter, `Enter` plays and `Escape` takes your tiles back.
 - The **i** button on the menu shows which version is running.
 
 Settings, the game in progress and your statistics are kept in the browser's `localStorage`, so they stay on that device and browser and disappear if its site data is cleared.
@@ -33,7 +31,7 @@ A word is valid if it is in `words/enable.txt` or `words/added.txt`.
 
 - `words/enable.txt` is the ENABLE word list (public domain), keeping the words of 2 to 15 letters. It came from <https://norvig.com/ngrams/enable1.txt>.
 - `words/added.txt` holds newer words that ENABLE lacks: QI, ZA, KI, OI, FE, OK, EW and some plurals. Add a word there, one per line in lower case, to make it playable.
-- `words/common.txt` is the everyday vocabulary that the Easy and Medium computer players will keep to. It is the words of `2of12full.txt` from Alan Beale's 12dicts lists (public domain; Alt12Dicts edition from <https://github.com/en-wl/wordlist>) that are valid here, together with their regular plurals, verb forms and comparisons that are valid too. Thanks to Alan Beale and Kevin Atkinson for the 12dicts lists.
+- `words/common.txt` is the everyday vocabulary that the Easy and Medium computer players keep to. It is the words of `2of12full.txt` from Alan Beale's 12dicts lists (public domain; Alt12Dicts edition from <https://github.com/en-wl/wordlist>) that are valid here, together with their regular plurals, verb forms and comparisons that are valid too. Thanks to Alan Beale and Kevin Atkinson for the 12dicts lists.
 
 ## Run locally
 
@@ -66,10 +64,10 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/moves.js` | Every legal play for a rack (the Appel–Jacobson method) |
 | `js/ai.js` | The computer's three levels, and hints |
 | `js/worker.js`, `js/thinker.js` | The computer's thinking in a background worker, and the page's side of it |
+| `js/stats.js` | Lifetime statistics |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
 | `js/animate.js` | The count of each play on the board |
 | `js/sound.js` | Sound effects, generated with the Web Audio API (no audio files) |
-| `js/stats.js` | Lifetime statistics |
-| `js/ui.js` | Drawing, the menu and dialogs, turns and storage |
+| `js/ui.js` | Drawing, the menu and dialogs, turns, zoom, typing and storage |
 | `words/` | The word lists |
 | `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, statistics and sound |
