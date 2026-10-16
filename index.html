@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14202b">
+<meta name="description" content="A crossword tile game for your browser. Pass one device between friends, or play the computer.">
+<title>Word Game</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect x=%226%22 y=%226%22 width=%2288%22 height=%2288%22 rx=%2216%22 fill=%22%23fbf1d6%22/><text x=%2246%22 y=%2276%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22 font-size=%2266%22 text-anchor=%22middle%22 fill=%22%232d2419%22>W</text><text x=%2280%22 y=%2286%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22 font-size=%2222%22 text-anchor=%22middle%22 fill=%22%236c5b45%22>4</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main id="menu" class="screen menu">
+  <header class="title">
+    <div class="title-tiles" aria-hidden="true">
+      <div><span class="tile">W<small>4</small></span><span class="tile">O<small>1</small></span><span class="tile">R<small>1</small></span><span class="tile">D<small>2</small></span></div>
+      <div><span class="tile">G<small>2</small></span><span class="tile">A<small>1</small></span><span class="tile">M<small>3</small></span><span class="tile">E<small>1</small></span></div>
+    </div>
+    <h1 class="sr-only">Word Game</h1>
+  </header>
+
+  <div class="options">
+    <div class="option" id="row-players">
+      <span>Players</span>
+      <div class="choice" data-setting="players">
+        <button data-value="2">2</button>
+        <button data-value="3">3</button>
+        <button data-value="4">4</button>
+      </div>
+    </div>
+    <div class="names" id="row-names">
+      <input data-name="0" maxlength="12" placeholder="Player 1" aria-label="Player 1 name" autocomplete="off" spellcheck="false">
+      <input data-name="1" maxlength="12" placeholder="Player 2" aria-label="Player 2 name" autocomplete="off" spellcheck="false">
+      <input data-name="2" maxlength="12" placeholder="Player 3" aria-label="Player 3 name" autocomplete="off" spellcheck="false">
+      <input data-name="3" maxlength="12" placeholder="Player 4" aria-label="Player 4 name" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="option">
+      <span>Word check</span>
+      <div class="choice" data-setting="lookup">
+        <button data-value="true">On</button>
+        <button data-value="false">Off</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="menu-actions">
+    <button id="btn-resume" class="btn primary" hidden>Resume game</button>
+    <button id="btn-new" class="btn primary">New game</button>
+    <div class="row">
+      <button id="btn-rules" class="btn">How to play</button>
+      <button id="btn-about" class="icon-btn" aria-label="About">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle class="line" cx="12" cy="12" r="9"/>
+          <path class="line" d="M12 11v6"/>
+          <circle cx="12" cy="7.5" r="1.3"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</main>
+
+<main id="table" class="screen table" hidden>
+  <header class="topbar">
+    <button id="btn-menu" class="icon-btn" aria-label="Menu">☰</button>
+    <div id="scores" class="scores"></div>
+    <div class="bag" title="Tiles left in the bag"><b id="bag-count"></b><small>left</small></div>
+  </header>
+
+  <div id="board" class="board" role="grid" aria-label="Board"></div>
+
+  <div class="status" role="status" aria-live="polite">
+    <p id="events"></p>
+    <p id="prompt"></p>
+  </div>
+
+  <div class="rack-row">
+    <div id="rack" class="rack" aria-label="Your tiles"></div>
+    <div id="rack-cover" class="rack-cover" hidden>
+      <button id="btn-reveal" class="btn primary"></button>
+    </div>
+  </div>
+
+  <footer class="actions">
+    <button id="btn-shuffle" class="tool" data-mode="shuffle">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="line shuffle" d="M3 7h4l9 10h5M18 14l3 3-3 3M3 17h4l9-10h5M18 4l3 3-3 3"/>
+        <path class="line recall" d="M9 15L4 10l5-5M4 10h10a6 6 0 0 1 0 12h-4"/>
+      </svg>
+      <span>Shuffle</span>
+    </button>
+    <button id="btn-exchange" class="tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="line" d="M7 20V5M3 9l4-4 4 4M17 4v15M13 15l4 4 4-4"/>
+      </svg>
+      <span>Swap</span>
+    </button>
+    <button id="btn-pass" class="tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="line" d="M4 12h15M13 6l6 6-6 6"/>
+      </svg>
+      <span>Pass</span>
+    </button>
+    <button id="btn-play" class="btn primary play">Play</button>
+  </footer>
+</main>
+
+<div id="picker" class="overlay" hidden>
+  <div class="dialog">
+    <h2>Blank tile</h2>
+    <p class="muted">Which letter should it be?</p>
+    <div id="letters" class="letters"></div>
+    <button id="btn-unblank" class="btn">Back to the rack</button>
+  </div>
+</div>
+
+<div id="swap" class="overlay" hidden>
+  <div class="dialog">
+    <h2>Swap tiles</h2>
+    <p class="muted">Choose the tiles to put back in the bag. You draw new ones, and your turn ends.</p>
+    <div id="swap-tiles" class="swap-tiles"></div>
+    <div class="row">
+      <button class="btn" data-close>Cancel</button>
+      <button id="btn-swap" class="btn primary">Swap</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirm" class="overlay" hidden>
+  <div class="dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text" class="muted"></p>
+    <div class="row">
+      <button class="btn" data-close>Cancel</button>
+      <button id="btn-confirm" class="btn primary"></button>
+    </div>
+  </div>
+</div>
+
+<div id="gameover" class="overlay" hidden>
+  <div id="gameover-body" class="dialog"></div>
+</div>
+
+<div id="rules" class="overlay" hidden>
+  <div class="dialog wide">
+    <h2>How to play</h2>
+    <ol class="rules">
+      <li><b>Make words.</b> Take turns laying tiles from your rack to make words that read across or down. Each turn's tiles go in one row or one column, with no gaps, and must join tiles already on the board. The first word covers the centre star.</li>
+      <li><b>Score them.</b> Every word your tiles make counts, including the short words formed alongside. Each letter scores the number on its tile; a blank stands for any letter you choose and scores nothing.</li>
+      <li><b>Premium squares.</b> 2L and 3L double or triple the letter on them; 2W and 3W (and the star) double or triple the whole word. They count only on the turn a tile first covers them.</li>
+      <li><b>All seven.</b> Use every tile on your rack in one turn for 50 extra points.</li>
+      <li><b>Or not.</b> Instead of playing you can swap tiles for new ones (while the bag still holds seven) or pass.</li>
+      <li><b>The end.</b> When the bag is empty and someone uses their last tile, the game ends: everyone loses the value of the tiles they still hold, and the player who went out gains it all. Three rounds in a row without a score also end the game.</li>
+    </ol>
+    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. On a keyboard, Enter plays and Escape takes your tiles back.</p>
+    <button class="btn primary" data-close>Got it</button>
+  </div>
+</div>
+
+<div id="about" class="overlay" hidden>
+  <div class="dialog">
+    <h2>Word Game</h2>
+    <p id="about-version"></p>
+    <p class="muted">If this is older than you expect, refresh the page. Browsers can hold on to the previous version for a few minutes after an update.</p>
+    <p><a href="https://github.com/menaechmus/WordGame" target="_blank" rel="noopener">Source on GitHub</a></p>
+    <button class="btn primary" data-close>Close</button>
+  </div>
+</div>
+
+<script type="module" src="js/ui.js"></script>
+</body>
+</html>

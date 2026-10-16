@@ -1,0 +1,735 @@
+:root {
+  --bg: #1d2f3d;
+  --bg-deep: #0f1922;
+  --ink: #f3efe6;
+  --muted: #a3b3c1;
+  --panel: rgba(0, 0, 0, 0.26);
+  --line: rgba(255, 255, 255, 0.2);
+  --gold: #f6c955;
+  --warn: #ffb4a3;
+
+  --square: #efe5cf;
+  --grid: #c3b089;
+  --tw: #7e3b6c;
+  --dw: #df7a64;
+  --tl: #2f8566;
+  --dl: #e6bd5c;
+
+  --tile: #fbf1d6;
+  --tile-low: #efdcb0;
+  --tile-ink: #2d2419;
+  --tile-value: #6c5b45;
+  --blank-ink: #1d7391;
+  --last: #2a8fb0;
+  --bad: #d64541;
+
+  --seat0: #62b5ff;
+  --seat1: #ff8a65;
+  --seat2: #6fd39a;
+  --seat3: #f2c94c;
+
+  --pad: 8px;
+  /* The board's side: the full width of a phone, unless the screen is too
+     short for the bars, the rack and the buttons as well. */
+  --side: min(100vw - 2 * var(--pad), 100vh - 252px, 720px);
+  /* Rack tiles: seven across with room between, no bigger than a fingertip
+     needs. */
+  --rt: min(54px, (100vw - 2 * var(--pad) - 56px) / 7);
+}
+
+@supports (height: 1dvh) {
+  :root { --side: min(100vw - 2 * var(--pad), 100dvh - 252px, 720px); }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html {
+  background: var(--bg-deep);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: radial-gradient(ellipse at 50% 20%, var(--bg), var(--bg-deep));
+  color: var(--ink);
+  font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+h1, h2, h3, p, ol, ul, dl, dd { margin: 0; }
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 760px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: max(var(--pad), env(safe-area-inset-top)) max(var(--pad), env(safe-area-inset-right))
+    max(var(--pad), env(safe-area-inset-bottom)) max(var(--pad), env(safe-area-inset-left));
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* Buttons */
+
+.btn {
+  min-height: 48px;
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+.btn.primary {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: #2b2205;
+}
+
+.btn:disabled,
+.tool:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row > * { flex: 1; }
+
+.icon-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--panel);
+  font-size: 1.2rem;
+}
+
+.row .icon-btn {
+  width: 48px;
+  height: auto;
+}
+
+svg .line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.icon-btn svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: auto;
+  fill: currentColor;
+}
+
+/* Tiles. Each place a tile appears sets --t, the tile's width, and the
+   letter and its value scale with it. */
+
+.tile {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--t);
+  height: var(--t);
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--t) * 0.14);
+  background: linear-gradient(160deg, var(--tile), var(--tile-low));
+  box-shadow: inset 0 calc(var(--t) * -0.06) 0 rgba(90, 60, 20, 0.22), 0 1px 2px rgba(0, 0, 0, 0.45);
+  color: var(--tile-ink);
+  font-size: calc(var(--t) * 0.6);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tile small {
+  position: absolute;
+  right: 9%;
+  bottom: 7%;
+  color: var(--tile-value);
+  font-size: calc(var(--t) * 0.27);
+  font-weight: 700;
+}
+
+.tile.blank { color: var(--blank-ink); }
+
+.tile.back {
+  background: repeating-linear-gradient(45deg, #3b6f8c 0 4px, #33627c 4px 8px);
+  box-shadow: inset 0 0 0 calc(var(--t) * 0.07) var(--tile), 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* Menu */
+
+.menu {
+  justify-content: center;
+  gap: 22px;
+  max-width: 440px;
+}
+
+.title-tiles {
+  display: grid;
+  justify-content: center;
+  gap: 6px;
+  --t: 48px;
+}
+
+.title-tiles div {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+}
+
+.title-tiles .tile:nth-child(odd) { transform: rotate(-3deg); }
+.title-tiles .tile:nth-child(even) { transform: rotate(2.5deg) translateY(2px); }
+
+.options {
+  display: grid;
+  gap: 12px;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.choice {
+  display: flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.choice button {
+  min-width: 44px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+}
+
+.choice button[aria-pressed='true'] {
+  background: var(--tile);
+  color: #2d2419;
+  font-weight: 600;
+}
+
+.names {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.names input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.names input::placeholder { color: var(--muted); }
+
+.menu-actions {
+  display: grid;
+  gap: 10px;
+}
+
+/* Short screens: tighten the menu so its last row of buttons stays in view. */
+@media (max-height: 640px) {
+  .menu { gap: 12px; }
+  .options { gap: 6px; }
+  .title-tiles { --t: 38px; }
+
+  .choice button {
+    min-height: 36px;
+    padding-block: 6px;
+  }
+}
+
+/* Table */
+
+.table { gap: 6px; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scores {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.chip {
+  display: grid;
+  flex: 1;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 5px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 2px 7px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.chip.active { border-color: var(--gold); }
+
+.chip i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--seat0);
+}
+
+.chip.seat1 i { background: var(--seat1); }
+.chip.seat2 i { background: var(--seat2); }
+.chip.seat3 i { background: var(--seat3); }
+
+.chip .name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip.active .name { color: var(--ink); }
+
+.chip b {
+  grid-column: 1 / -1;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.bag {
+  display: grid;
+  flex: none;
+  justify-items: center;
+  min-width: 44px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  background: var(--panel);
+  line-height: 1.15;
+}
+
+.bag b {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bag small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+/* The board: fifteen squares a side with a hairline between them. */
+.board {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 1px;
+  width: var(--side);
+  height: var(--side);
+  margin: 0 auto;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--grid);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
+  --t: calc((var(--side) - 18px) / 15);
+}
+
+.cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border-radius: 2px;
+  background: var(--square);
+}
+
+.cell.tw { background: var(--tw); }
+.cell.dw { background: var(--dw); }
+.cell.tl { background: var(--tl); }
+.cell.dl { background: var(--dl); }
+
+.label {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: calc(var(--t) * 0.36);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  pointer-events: none;
+}
+
+.cell.dl .label { color: #6b4c0e; }
+.cell.star .label { font-size: calc(var(--t) * 0.66); }
+
+.cell .tile {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  border-radius: calc(var(--t) * 0.12);
+}
+
+/* Tiles laid this turn stand out, and can be picked up again. */
+.cell.pending .tile {
+  z-index: 1;
+  background: linear-gradient(160deg, #fffaf0, #f8e9c6);
+  box-shadow: inset 0 0 0 2px var(--gold), 0 2px 4px rgba(0, 0, 0, 0.5);
+  cursor: grab;
+  touch-action: none;
+}
+
+/* The last play made, ringed until the next one. */
+.cell.last .tile::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px var(--last);
+  content: '';
+  pointer-events: none;
+}
+
+/* With word check on, tiles in a word that is not in the list. */
+.cell.pending.bad .tile { box-shadow: inset 0 0 0 2px var(--bad), 0 2px 4px rgba(0, 0, 0, 0.5); }
+
+/* Where a dragged tile would land. */
+.cell.target {
+  z-index: 2;
+  box-shadow: 0 0 0 2px var(--gold), 0 0 10px 2px rgba(246, 201, 85, 0.6);
+}
+
+.status {
+  display: grid;
+  flex: 1;
+  align-content: center;
+  gap: 1px;
+  min-height: 2.9em;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
+#prompt { color: var(--muted); }
+#prompt.warn { color: var(--warn); }
+
+.rack-row {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.rack {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  min-width: min(100%, calc(var(--rt) * 7 + 56px));
+  min-height: calc(var(--rt) + 14px);
+  padding: 7px 8px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  --t: var(--rt);
+}
+
+.rack .tile {
+  cursor: grab;
+  touch-action: none;
+  transition: transform 0.12s ease, margin 0.12s ease;
+}
+
+.rack .tile.selected {
+  transform: translateY(-7px);
+  box-shadow: 0 0 0 3px var(--gold), 0 6px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* While a tile is dragged, the place it came from is left faint, and the rack
+   opens a gap where it would go. */
+.tile.lifted { opacity: 0.3; }
+.rack .tile.gap-before { margin-left: calc(var(--rt) * 0.55); }
+.rack.gap-end::after { width: calc(var(--rt) * 0.55); content: ''; }
+
+.ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.08);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+  --t: var(--rt);
+}
+
+.rack-cover {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.rack-cover .btn { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tool {
+  display: grid;
+  flex: none;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  width: 58px;
+  min-height: 52px;
+  padding: 4px 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.7rem;
+}
+
+.tool svg {
+  width: 22px;
+  height: 22px;
+}
+
+.tool[data-mode='shuffle'] .recall,
+.tool[data-mode='recall'] .shuffle { display: none; }
+
+.actions .play {
+  flex: 1;
+  min-height: 52px;
+  font-size: 1.05rem;
+}
+
+/* Wide screens, and phones on their side: the board on the left with the
+   rack under it, and everything else in a column on the right. */
+@media (min-aspect-ratio: 11/10) and (min-width: 640px), (orientation: landscape) and (max-height: 540px) {
+  :root {
+    --panel-w: clamp(230px, 30vw, 330px);
+    --rt: clamp(36px, 7vh, 54px);
+    --side: min(100vh - 2 * var(--pad) - var(--rt) - 28px, 100vw - var(--panel-w) - 3 * var(--pad) - 16px, 900px);
+  }
+
+  @supports (height: 1dvh) {
+    :root {
+      --rt: clamp(36px, 7dvh, 54px);
+      --side: min(100dvh - 2 * var(--pad) - var(--rt) - 28px, 100vw - var(--panel-w) - 3 * var(--pad) - 16px, 900px);
+    }
+  }
+
+  .table {
+    display: grid;
+    grid-template: 'board top' auto 'board status' 1fr 'rack actions' auto / var(--side) var(--panel-w);
+    align-content: center;
+    justify-content: center;
+    column-gap: 16px;
+    row-gap: 8px;
+    max-width: none;
+  }
+
+  .topbar {
+    display: grid;
+    grid-area: top;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+  }
+
+  /* The scores make a column, one player to a row. */
+  .scores {
+    flex-direction: column;
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .chip {
+    grid-template-columns: auto 1fr auto;
+    min-height: 40px;
+  }
+
+  .chip .name { font-size: 0.9rem; }
+  .chip b { grid-column: auto; }
+
+  .bag {
+    grid-column: 3;
+    grid-template-columns: auto auto;
+    align-items: baseline;
+    gap: 5px;
+    align-self: center;
+    padding: 6px 10px;
+  }
+
+  .board { grid-area: board; }
+
+  .status {
+    grid-area: status;
+    align-content: start;
+    text-align: left;
+  }
+
+  .rack-row { grid-area: rack; }
+  .actions { grid-area: actions; align-self: center; }
+  .tool { width: auto; flex: 1; }
+  .actions .play { flex: 1.6; }
+}
+
+/* Overlays */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 16px;
+  background: rgba(5, 12, 18, 0.78);
+}
+
+.dialog {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 380px);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #1e3242;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  text-align: center;
+}
+
+.dialog.wide {
+  width: min(100%, 520px);
+  text-align: left;
+}
+
+.dialog h2 { font-size: 1.4rem; }
+.dialog a { color: #9fd8ff; }
+
+.dialog h3 {
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.letters,
+.swap-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  --t: 40px;
+}
+
+.swap-tiles {
+  padding-top: 8px;
+  --t: 44px;
+}
+
+.swap-tiles .tile { transition: transform 0.12s ease; }
+
+.swap-tiles .tile[aria-pressed='true'] {
+  transform: translateY(-7px);
+  box-shadow: 0 0 0 3px var(--gold), 0 6px 10px rgba(0, 0, 0, 0.45);
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid th,
+.grid td {
+  padding: 5px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: right;
+}
+
+.grid th:first-child { text-align: left; }
+
+.grid thead th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.grid .best {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.rules {
+  display: grid;
+  gap: 8px;
+  padding-left: 1.2em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
