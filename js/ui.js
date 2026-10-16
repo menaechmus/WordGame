@@ -9,10 +9,12 @@ import { evaluatePlay } from './rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './game.js';
 import { setupInput } from './input.js';
 import { startThinker, ask } from './thinker.js';
+import { countPlay } from './animate.js';
+import { playSound, setMuted, unlockSound } from './sound.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -48,7 +50,7 @@ function parseValue(text) {
 
 // Saved settings are only accepted if the menu offers that value.
 function loadSettings() {
-  const settings = { mode: 'ai', difficulty: 'medium', players: 2, names: ['', '', '', ''], hints: true, lookup: true };
+  const settings = { mode: 'ai', difficulty: 'medium', players: 2, names: ['', '', '', ''], hints: true, lookup: true, sound: true };
   const saved = load(SETTINGS_KEY);
   for (const group of document.querySelectorAll('.choice')) {
     const key = group.dataset.setting;
@@ -83,6 +85,11 @@ let aiTimer = 0;
 let thinking = 0; // the computer's question in flight; 0 when there is none
 let questions = 0;
 let shownHints = []; // the plays listed in the hints box
+let counting = null; // while a play is counted out: { held, text, run }
+let skipClick = false; // the tap that skipped a count should do nothing else
+let drawn = new Set(); // tiles just drawn onto the rack, to slide in
+
+setMuted(!settings.sound);
 
 // The word list arrives from the worker, which also does the computer's
 // thinking.
@@ -107,7 +114,9 @@ const viewer = () => (game.mode === 'ai' ? 0 : game.turn);
 
 // People sharing one screen keep their tiles hidden until their owner asks.
 const covered = () => game.mode !== 'ai' && game.phase === 'play' && revealedTo !== game.turn;
-const canAct = () => game.phase === 'play' && !isAi(game.turn) && !covered();
+const canAct = () => game.phase === 'play' && !isAi(game.turn) && !covered() && !counting;
+
+const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---- Drawing ------------------------------------------------------------
 
@@ -136,14 +145,31 @@ function rackTiles(seat) {
   return game.players[seat].rack.filter(id => !laid.has(id));
 }
 
+// While a play is counted out, the scores wait at what they were before it.
 function drawScores() {
+  const scores = counting ? counting.held : game.players.map(player => player.score);
   $('scores').innerHTML = game.players
     .map((player, seat) => {
       const active = game.phase === 'play' && seat === game.turn;
-      return `<div class="chip seat${seat}${active ? ' active' : ''}"><i></i><span class="name">${escapeHtml(player.name)}</span><b>${player.score}</b></div>`;
+      return `<div class="chip seat${seat}${active ? ' active' : ''}"><i></i><span class="name">${escapeHtml(player.name)}</span><b>${scores[seat]}</b></div>`;
     })
     .join('');
   $('bag-count').textContent = game.bag.length;
+}
+
+// After a count, the new scores tick up to their totals.
+function countUp(from) {
+  if (reducedMotion()) return;
+  const began = performance.now();
+  const chips = [...$('scores').querySelectorAll('.chip b')];
+  const tick = now => {
+    const t = Math.min(1, (now - began) / 450);
+    game.players.forEach((player, seat) => {
+      if (chips[seat]?.isConnected) chips[seat].textContent = Math.round(from[seat] + (player.score - from[seat]) * t);
+    });
+    if (t < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 // Each square is redrawn only when the tile on it changes, so a tile already
@@ -168,15 +194,22 @@ function drawBoard(result) {
   }
 }
 
+// Tiles just drawn from the bag slide in from below, one after another.
 function drawRack() {
   const seat = viewer();
   const hidden = covered() || isAi(seat);
+  let arriving = 0;
   $('rack').innerHTML = rackTiles(seat)
-    .map(id => (hidden ? '<span class="tile back"></span>' : tileHtml(id, TILES[id], { tag: 'button', classes: id === selected ? 'selected' : '' })))
+    .map(id => {
+      if (hidden) return '<span class="tile back"></span>';
+      const classes = [id === selected && 'selected', drawn.has(id) && 'drawn'].filter(Boolean).join(' ');
+      return tileHtml(id, TILES[id], { tag: 'button', classes, attrs: drawn.has(id) ? ` style="--i: ${arriving++}"` : '' });
+    })
     .join('');
 }
 
 function promptText(result) {
+  if (counting) return [counting.text, false];
   if (game.phase === 'over') return ['', false];
   if (covered()) return [`Pass the device to ${nameOf(game.turn)}.`, false];
   if (isAi(game.turn)) return [`${nameOf(game.turn)} is thinking…`, false];
@@ -219,7 +252,7 @@ function render() {
   drawBoard(result);
   drawRack();
 
-  $('events').textContent = messages.join(' ');
+  $('events').textContent = messages.slice(0, messages.length - (counting?.said ?? 0)).join(' ');
   const [prompt, warn] = promptText(result);
   $('prompt').textContent = prompt;
   $('prompt').classList.toggle('warn', warn);
@@ -228,7 +261,8 @@ function render() {
   $('rack-cover').hidden = !covered();
   if (covered()) $('btn-reveal').textContent = `Show ${nameOf(game.turn)}’s tiles`;
 
-  $('gameover').hidden = game.phase !== 'over' || !resultsShown;
+  // A game won on a play is announced once the play has been counted.
+  $('gameover').hidden = game.phase !== 'over' || !resultsShown || Boolean(counting);
   if (game.phase === 'over') $('gameover-body').innerHTML = gameOverHtml();
 }
 
@@ -298,6 +332,7 @@ function describe(events) {
 // nothing in the game and says why. The computer's moves are added to what
 // was said before (`append`), so a person's own play is still there to read.
 function commit(action, append = false) {
+  const held = game.players.map(player => player.score);
   try {
     action();
   } catch (error) {
@@ -311,7 +346,77 @@ function commit(action, append = false) {
   resultsShown = true;
   messages = append ? [...messages, ...describe(game.events)] : describe(game.events);
   store(GAME_KEY, game.phase === 'over' ? null : game);
+
+  // New tiles slide onto the rack of whoever is looking at it.
+  const refilled = game.events.find(event => event.drawn?.length);
+  drawn = refilled && refilled.player === viewer() && !covered() && !reducedMotion() ? new Set(refilled.drawn) : new Set();
+  if (game.events.some(event => event.type === 'exchange')) playSound('swap');
+  if (drawn.size) playSound('draw', 0.15);
+
+  const played = game.events.find(event => event.type === 'play');
+  // What this action says waits for the count, which tells the total itself.
+  const said = describe(game.events).length;
+  if (played && !reducedMotion()) counting = { held, text: played.result.words[0].text, skipped: false, said };
   render();
+  drawn = new Set();
+  if (counting) countOut(played);
+  else afterTurn(played);
+}
+
+// Counts a play out on the board, with the running total in the prompt.
+// The computer's tiles drop in first.
+function countOut(played) {
+  const finished = []; // words already counted, with their scores
+  const show = text => {
+    counting.text = [...finished, text].filter(Boolean).join(' · ');
+    $('prompt').textContent = counting.text;
+    $('prompt').classList.remove('warn');
+  };
+  const run = countPlay({
+    board: $('board'),
+    result: played.result,
+    dropped: isAi(played.player),
+    onStep: step => {
+      if (step.kind === 'drop') playSound('place');
+      else if (step.kind === 'letter') {
+        playSound(step.premium ? 'bonus' : 'tick', 0, step.i);
+        show(`${step.word} ${step.sum}`);
+      } else if (step.kind === 'word') {
+        playSound('word');
+        show(`${step.word} ${step.sum} × ${step.mult} = ${step.score}`);
+      } else if (step.kind === 'scored') {
+        finished.push(`${step.word} ${step.score}`);
+        show('');
+      } else if (step.kind === 'bingo') {
+        playSound('bingo');
+        show('+50 for all seven!');
+      }
+    },
+  });
+  counting.run = run;
+  run.done.then(() => {
+    if (counting?.run !== run) return;
+    const { held, skipped } = counting;
+    counting = null;
+    render();
+    if (!skipped) countUp(held);
+    afterTurn(played);
+  });
+}
+
+// Also called early, when a tap or a key skips the count: the score then
+// lands at once.
+function skipCount() {
+  if (!counting) return;
+  counting.skipped = true;
+  counting.run?.skip();
+}
+
+function afterTurn(played) {
+  if (game.phase === 'over') {
+    const won = game.mode !== 'ai' || game.winners.includes(0);
+    playSound(won ? 'win' : 'lose', played ? 0.2 : 0);
+  }
   scheduleAi();
 }
 
@@ -422,6 +527,7 @@ function placeTile(id, index) {
   pending.push({ index, id, letter });
   selected = null;
   notice = '';
+  playSound('place');
   if (letter === BLANK) openPicker(index);
   render();
 }
@@ -452,12 +558,20 @@ function recall() {
   render();
 }
 
+// The tiles slide from their old places to their new ones.
 function shuffleRack() {
   const seat = viewer();
+  const before = new Map([...$('rack').querySelectorAll('.tile[data-id]')].map(tile => [tile.dataset.id, tile.getBoundingClientRect().left]));
   arrange(game, seat, [...shuffle(rackTiles(seat)), ...pending.map(tile => tile.id)]);
   selected = null;
   if (game.phase === 'play') store(GAME_KEY, game);
   render();
+  playSound('shuffle');
+  if (reducedMotion()) return;
+  for (const tile of $('rack').querySelectorAll('.tile[data-id]')) {
+    const dx = before.get(tile.dataset.id) - tile.getBoundingClientRect().left;
+    if (dx) tile.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: 280, easing: 'ease-out' });
+  }
 }
 
 function onShuffle() {
@@ -592,6 +706,8 @@ function playersFor() {
 function showMenu() {
   input.cancel();
   stopAi();
+  skipCount();
+  counting = null;
   for (const group of document.querySelectorAll('.choice')) {
     for (const button of group.children) {
       button.setAttribute('aria-pressed', parseValue(button.dataset.value) === settings[group.dataset.setting]);
@@ -640,6 +756,7 @@ $('menu').addEventListener('click', event => {
   if (!button) return;
   settings[button.parentElement.dataset.setting] = parseValue(button.dataset.value);
   store(SETTINGS_KEY, settings);
+  setMuted(!settings.sound);
   showMenu();
 });
 
@@ -719,6 +836,38 @@ for (const button of document.querySelectorAll('[data-close]')) {
     button.closest('.overlay').hidden = true;
   });
 }
+
+// Browsers only allow sound once the page has been tapped or typed at, so every
+// tap and key wakes the audio. Either one also skips a count in progress,
+// and then does nothing else: it must not also pick a tile or press a button.
+for (const type of ['pointerdown', 'keydown']) {
+  document.addEventListener(
+    type,
+    event => {
+      unlockSound();
+      skipClick = Boolean(counting);
+      if (!skipClick) return;
+      skipCount();
+      if (type === 'keydown') {
+        event.stopPropagation();
+        if (event.key === 'Enter' || event.key === ' ') event.preventDefault();
+      }
+    },
+    true,
+  );
+}
+
+// The click that follows a skipping tap is dropped before anything sees it.
+document.addEventListener(
+  'click',
+  event => {
+    if (!skipClick) return;
+    skipClick = false;
+    event.stopPropagation();
+    event.preventDefault();
+  },
+  true,
+);
 
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') {

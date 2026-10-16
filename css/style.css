@@ -452,6 +452,28 @@ svg .line {
 /* With word check on, tiles in a word that is not in the list. */
 .cell.pending.bad .tile { box-shadow: inset 0 0 0 2px var(--bad), 0 2px 4px rgba(0, 0, 0, 0.5); }
 
+/* Points floating up from a tile while a play is counted out. */
+.float {
+  position: absolute;
+  bottom: 88%;
+  left: 50%;
+  z-index: 6;
+  color: #fff;
+  font-size: max(12px, calc(var(--t) * 0.55));
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85), 0 0 5px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.float.bonus { color: var(--gold); }
+
+.float.bingo {
+  color: var(--gold);
+  font-size: max(20px, calc(var(--t) * 1.1));
+}
+
 /* Where a dragged tile would land. */
 .cell.target {
   z-index: 2;
@@ -499,6 +521,16 @@ svg .line {
 .rack .tile.selected {
   transform: translateY(-7px);
   box-shadow: 0 0 0 3px var(--gold), 0 6px 10px rgba(0, 0, 0, 0.45);
+}
+
+/* Tiles drawn from the bag slide up into the rack, one after another. */
+.rack .tile.drawn {
+  animation: draw-in 0.32s ease-out backwards;
+  animation-delay: calc(var(--i) * 70ms + 120ms);
+}
+
+@keyframes draw-in {
+  from { opacity: 0; transform: translateY(80%); }
 }
 
 /* While a tile is dragged, the place it came from is left faint, and the rack
@@ -558,7 +590,9 @@ svg .line {
 .actions .play {
   flex: 1;
   min-height: 52px;
+  padding-inline: 8px;
   font-size: 1.05rem;
+  white-space: nowrap;
 }
 
 /* Wide screens, and phones on their side: the board on the left with the

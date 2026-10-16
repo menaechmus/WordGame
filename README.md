@@ -4,7 +4,7 @@ A crossword tile game for the browser: a 15 × 15 board with premium squares, 10
 
 It is a static page: plain HTML, CSS and JavaScript modules, with no build step and no dependencies.
 
-This is a work in progress. Next to come: scoring animations, sound, and statistics.
+This is a work in progress. Next to come: statistics and a history of moves.
 
 ## Play
 
@@ -15,6 +15,8 @@ This is a work in progress. Next to come: scoring animations, sound, and statist
 - Drag tiles along the rack to arrange them, or press **Shuffle**.
 - A blank asks which letter it should be. Tap it again on the board to change its mind.
 - The **Play** button shows what the tiles laid so far would score.
+- Each play is counted out on the board: every tile pops as its points are added, a tile on a 2L or 3L square jumps, a word on a 2W or 3W square jumps as a whole, and a play using all seven tiles sets the word bouncing. Tap anywhere to skip the count. Devices set to reduce motion skip it always.
+- Sound effects can be switched off with **Sound** on the menu.
 - **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
 - Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
 - **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.
@@ -63,6 +65,8 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/ai.js` | The computer's three levels, and hints |
 | `js/worker.js`, `js/thinker.js` | The computer's thinking in a background worker, and the page's side of it |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
+| `js/animate.js` | The count of each play on the board |
+| `js/sound.js` | Sound effects, generated with the Web Audio API (no audio files) |
 | `js/ui.js` | Drawing, the menu and dialogs, turns and storage |
 | `words/` | The word lists |
-| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding and the computer |
+| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer and sound |
