@@ -10,15 +10,17 @@ import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from '.
 import { setupInput } from './input.js';
 import { startThinker, ask } from './thinker.js';
 import { countPlay } from './animate.js';
+import { startParty } from './celebrate.js';
 import { playSound, setMuted, unlockSound } from './sound.js';
 import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
+const CHEER_MS = 3500; // fireworks and confetti before the game-over box appears
 const SETTINGS_KEY = 'wordgame.settings';
 const GAME_KEY = 'wordgame.game';
 const STATS_KEY = 'wordgame.stats';
@@ -94,6 +96,8 @@ let shownHints = []; // the plays listed in the hints box
 let counting = null; // while a play is counted out: { held, text, run }
 let skipClick = false; // the tap that skipped a count should do nothing else
 let drawn = new Set(); // tiles just drawn onto the rack, to slide in
+let celebrating = 0; // timer while a win is celebrated and the game-over box waits
+let party = null; // the fireworks and confetti, which outlast the celebration a little
 let cursor = null; // the keyboard's typing cursor: { index, across }
 let typed = []; // squares filled by typing, newest last, for Backspace
 let lastTap = { index: -1, time: 0 }; // for telling a double-tap on the board
@@ -170,6 +174,7 @@ function drawScores() {
       return `<div class="chip seat${seat}${active ? ' active' : ''}"><i></i><span class="name">${escapeHtml(player.name)}</span><b>${scores[seat]}</b></div>`;
     })
     .join('');
+  $('scores').classList.toggle('many', game.players.length > 2);
   $('bag-count').textContent = game.bag.length;
 }
 
@@ -264,6 +269,17 @@ function drawButtons(result) {
   $('btn-hint').hidden = !settings.hints;
   $('btn-hint').disabled = !acting;
   $('btn-lookup').hidden = !settings.lookup;
+  $('btn-sound').setAttribute('aria-pressed', settings.sound);
+}
+
+// The speaker button and the menu's Sound row are the same setting.
+function toggleSound() {
+  settings.sound = !settings.sound;
+  store(SETTINGS_KEY, settings);
+  setMuted(!settings.sound);
+  unlockSound();
+  playSound('place'); // heard only when sound has just come back on
+  $('btn-sound').setAttribute('aria-pressed', settings.sound);
 }
 
 function render() {
@@ -282,8 +298,10 @@ function render() {
   $('rack-cover').hidden = !covered();
   if (covered()) $('btn-reveal').textContent = `Show ${nameOf(game.turn)}’s tiles`;
 
-  // A game won on a play is announced once the play has been counted.
+  // A game won on a play is announced once the play has been counted, and a
+  // person's win once it has been celebrated.
   $('gameover').hidden = game.phase !== 'over' || !resultsShown || Boolean(counting);
+  $('gameover').classList.toggle('party', Boolean(celebrating));
   if (game.phase === 'over') $('gameover-body').innerHTML = gameOverHtml();
 }
 
@@ -485,6 +503,7 @@ function commit(action, append = false) {
   // What this action says waits for the count, which tells the total itself.
   const said = describe(game.events).length;
   if (played && !reducedMotion()) counting = { held, text: played.result.words[0].text, skipped: false, said };
+  if (!counting) celebrate(); // before the redraw that shows the end
   render();
   if (played) showSquares(played.result.words[0].cells); // a zoomed board shows the play
   drawn = new Set();
@@ -527,6 +546,7 @@ function countOut(played) {
     if (counting?.run !== run) return;
     const { held, skipped } = counting;
     counting = null;
+    celebrate();
     render();
     if (!skipped) countUp(held);
     afterTurn(played);
@@ -541,12 +561,45 @@ function skipCount() {
   counting.run?.skip();
 }
 
+// The fanfare for a person's win; a sadder sound when the computer wins
+// alone; nothing for a tie with the computer.
 function afterTurn(played) {
   if (game.phase === 'over') {
-    const won = game.mode !== 'ai' || game.winners.includes(0);
-    playSound(won ? 'win' : 'lose', played ? 0.2 : 0);
+    const computerWon = game.winners.length === 1 && isAi(game.winners[0]);
+    if (personWon()) playSound('win', played ? 0.2 : 0);
+    else if (computerWon) playSound('lose', played ? 0.2 : 0);
   }
   scheduleAi();
+}
+
+// A game won by a person, or shared only between people.
+const personWon = () => game.winners.length > 0 && game.winners.every(seat => !isAi(seat));
+
+// A person's win is celebrated before the game-over box appears: fireworks
+// and confetti, a pop for each firework, while the fanfare plays. A win for
+// the computer goes straight to the box. Called just before the redraw that
+// shows the end.
+function celebrate() {
+  if (game.phase !== 'over' || !personWon() || reducedMotion()) return;
+  party = startParty($('party'), () => playSound('firework'));
+  celebrating = setTimeout(() => endCelebration(), CHEER_MS);
+}
+
+// Shows the game-over box. Also called early, when a tap or key skips the
+// celebration; then the fireworks stop too, instead of falling behind it.
+function endCelebration(skipped = false) {
+  if (!celebrating) return;
+  clearTimeout(celebrating);
+  celebrating = 0;
+  if (skipped) stopParty();
+  render();
+}
+
+function stopParty() {
+  clearTimeout(celebrating);
+  celebrating = 0;
+  party?.stop();
+  party = null;
 }
 
 // The computer's turn: its question goes to the worker at once, and the
@@ -929,6 +982,7 @@ function showMenu() {
   input.cancel();
   stopAi();
   skipCount();
+  stopParty();
   counting = null;
   cursor = null;
   for (const group of document.querySelectorAll('.choice')) {
@@ -958,6 +1012,7 @@ function showMenu() {
 
 function start(saved = null) {
   game = saved ?? newGame({ mode: settings.mode, difficulty: settings.difficulty, players: playersFor() });
+  stopParty();
   pending = [];
   typed = [];
   cursor = null;
@@ -1051,6 +1106,7 @@ $('btn-confirm').addEventListener('click', () => {
 $('btn-stats').addEventListener('click', showStats);
 $('btn-moves').addEventListener('click', showMoves);
 $('btn-zoom').addEventListener('click', () => toggleZoom());
+$('btn-sound').addEventListener('click', toggleSound);
 
 // The first press arms the button, the second erases.
 $('btn-reset').addEventListener('click', () => {
@@ -1090,8 +1146,9 @@ for (const type of ['pointerdown', 'keydown']) {
     type,
     event => {
       unlockSound();
-      skipClick = Boolean(counting);
+      skipClick = Boolean(counting) || Boolean(celebrating);
       if (!skipClick) return;
+      endCelebration(true); // first, as a count that wins the game starts one
       skipCount();
       if (type === 'keydown') {
         event.stopPropagation();

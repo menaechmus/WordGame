@@ -1,7 +1,10 @@
 // Sound effects, made on the spot with the Web Audio API so the game ships no
-// audio files. Almost every effect is built from two ingredients: a burst of
-// filtered noise (a tile set down, the bag shaken) and a short tone (a tick,
-// a chime). The fanfare for a win adds a third, a trumpet note.
+// audio files. Every effect is built from two ingredients: a burst of filtered
+// noise (a tile set down, the bag shaken) and a short tone (a tick, a chime).
+// The fanfare for a win is a brass ensemble of its own, in fanfare.js, the
+// same as Cribbage's.
+
+import { playFanfare } from './fanfare.js';
 
 const noiseByContext = new WeakMap();
 
@@ -47,45 +50,6 @@ function tone(context, at, { length, pitch, glide = 1, gain, wave = 'sine' }) {
   oscillator.connect(level).connect(context.destination);
   oscillator.start(at);
   oscillator.stop(at + length + 0.01);
-}
-
-// A trumpet note: two slightly detuned saw waves through a filter that opens
-// wide as the note starts and then settles, which gives the brassy bite.
-// `vibrato` is how far the pitch wavers by the end, as a fraction of it.
-function brass(context, at, { length, pitch, gain, vibrato = 0 }) {
-  const filter = context.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(pitch * 1.2, at);
-  filter.frequency.exponentialRampToValueAtTime(pitch * 7, at + 0.03);
-  filter.frequency.exponentialRampToValueAtTime(pitch * 3.5, at + Math.min(length, 0.15));
-  const level = context.createGain();
-  level.gain.setValueAtTime(0.0001, at);
-  level.gain.exponentialRampToValueAtTime(gain, at + 0.025);
-  level.gain.exponentialRampToValueAtTime(gain * 0.8, at + length - 0.05);
-  level.gain.exponentialRampToValueAtTime(0.0001, at + length);
-  filter.connect(level).connect(context.destination);
-
-  let wobble = null;
-  if (vibrato) {
-    const lfo = context.createOscillator();
-    lfo.frequency.setValueAtTime(5.5, at);
-    wobble = context.createGain();
-    wobble.gain.setValueAtTime(0, at);
-    wobble.gain.linearRampToValueAtTime(pitch * vibrato, at + length);
-    lfo.connect(wobble);
-    lfo.start(at);
-    lfo.stop(at + length + 0.01);
-  }
-  for (const cents of [-6, 6]) {
-    const oscillator = context.createOscillator();
-    oscillator.type = 'sawtooth';
-    oscillator.frequency.setValueAtTime(pitch, at);
-    oscillator.detune.setValueAtTime(cents, at);
-    wobble?.connect(oscillator.frequency);
-    oscillator.connect(filter);
-    oscillator.start(at);
-    oscillator.stop(at + length + 0.01);
-  }
 }
 
 const EFFECTS = {
@@ -134,12 +98,18 @@ const EFFECTS = {
     for (let i = 0; i < 5; i++) burst(context, at + 0.12 + i * 0.05, { length: 0.03, pitch: 2400 + Math.random() * 1500, sweep: 0.7, gain: 0.35 });
   },
 
-  // The bugle call "Charge!": G C E G, then E and a long G.
+  // About three seconds of brass and timpani, then the hall's ring.
   win(context, at) {
-    const notes = [[392, 0, 0.13], [523, 0.14, 0.13], [659, 0.28, 0.13], [784, 0.42, 0.34], [659, 0.8, 0.13], [784, 0.94, 0.62]];
-    notes.forEach(([pitch, start, length], i) => {
-      brass(context, at + start, { length, pitch, gain: 0.12, vibrato: i === notes.length - 1 ? 0.012 : 0 });
-    });
+    playFanfare(context, at, noiseFor(context));
+  },
+
+  // A firework bursting: a soft thump and bang, then a scatter of crackles.
+  firework(context, at) {
+    tone(context, at, { length: 0.2, pitch: 110, glide: 0.45, gain: 0.25 });
+    burst(context, at, { length: 0.16, pitch: 900, sweep: 0.4, gain: 0.4 });
+    for (let i = 0; i < 7; i++) {
+      burst(context, at + 0.12 + Math.random() * 0.4, { length: 0.012, pitch: 4000 + Math.random() * 2500, gain: 0.15 + Math.random() * 0.15 });
+    }
   },
 
   lose(context, at) {

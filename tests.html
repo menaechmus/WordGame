@@ -23,6 +23,7 @@ import { generateMoves, placementsFor } from './js/moves.js';
 import { chooseMove, topHints, leaveValue, think } from './js/ai.js';
 import { SOUNDS, renderSound } from './js/sound.js';
 import { emptyStats, loadStats, recordGame, RECENT } from './js/stats.js';
+import { createShow, advance, isOver } from './js/celebrate.js';
 
 const results = [];
 const notes = [];
@@ -716,18 +717,69 @@ test('stats: a real game is recorded and survives saving', () => {
   notes.push(`stats: recorded ${game.players.map(p => `${p.name} ${p.score}`).join(', ')}; best play ${stats.records.bestPlay.word} ${stats.records.bestPlay.score}`);
 });
 
+// ---- Celebration (as in Cribbage) ---------------------------------------
+
+const screens = [[390, 664], [844, 390], [1280, 720]];
+
+// Runs a whole show in steps of a sixtieth of a second, calling look(show,
+// bursts) after each step, and returns the show once it is over.
+function runShow(width, height, look = () => {}) {
+  const show = createShow(width, height, seeded(width));
+  for (let step = 0; step < 60 * 20 && !isOver(show); step++) look(show, advance(show, 1 / 60));
+  return show;
+}
+
+test('celebration: every firework bursts on screen, in the upper half', () => {
+  for (const [width, height] of screens) {
+    runShow(width, height, (show, bursts) => {
+      if (!bursts) return;
+      for (const rocket of show.rockets.filter(r => r.burst)) {
+        if (rocket.x < 0.05 * width || rocket.x > 0.95 * width || rocket.to < 0.08 * height || rocket.to > 0.5 * height) {
+          throw new Error(`${width}x${height}: a burst at ${rocket.x.toFixed(0)}, ${rocket.to.toFixed(0)}`);
+        }
+      }
+    });
+  }
+});
+
+test('celebration: confetti falls across the whole width', () => {
+  for (const [width, height] of screens) {
+    const strips = new Set(createShow(width, height, seeded(width)).confetti.map(piece => Math.floor((10 * piece.x) / width)));
+    equal([...strips].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], `${width}x${height} tenths of the width with confetti`);
+  }
+});
+
+test('celebration: everything has gone within six seconds, and stays gone', () => {
+  for (const [width, height] of screens) {
+    const show = runShow(width, height);
+    if (!isOver(show)) throw new Error(`${width}x${height}: still going after 20 s`);
+    if (show.time > 6) throw new Error(`${width}x${height}: took ${show.time.toFixed(2)} s`);
+    advance(show, 1);
+    if (!isOver(show)) throw new Error(`${width}x${height}: started again`);
+    notes.push(`celebration ${width}x${height}: over after ${(show.time - 1).toFixed(2)} s`);
+  }
+});
+
+test('celebration: each rocket bursts exactly once', () => {
+  for (const [width, height] of screens) {
+    let bursts = 0;
+    const show = runShow(width, height, (_, count) => (bursts += count));
+    equal([bursts, show.rockets.every(rocket => rocket.burst)], [show.rockets.length, true], `${width}x${height} bursts`);
+  }
+});
+
 // ---- Sound --------------------------------------------------------------
 
 // Renders each effect into a buffer instead of the speakers. This cannot say
 // whether it sounds good, only that it is there, bounded and not distorted.
-// Effects are short, except the fanfare for a win. The tick is tried at its
-// lowest and highest steps.
-const LONGEST = { win: 1.9 };
+// Effects are short, except the fanfare for a win and the ring of its hall.
+// The tick is tried at its lowest and highest steps.
+const LONGEST = { win: 4.5 };
 for (const [name, step] of SOUNDS.flatMap(name => (name === 'tick' ? [[name, 0], [name, 14]] : [[name, 0]]))) {
   const label = `sound: ${name}${name === 'tick' ? ` (step ${step})` : ''} is audible, bounded and does not clip`;
   try {
     const rate = 44100;
-    const context = new OfflineAudioContext(1, rate * 2.5, rate);
+    const context = new OfflineAudioContext(1, rate * 5, rate);
     renderSound(name, context, 0.05, step);
     const samples = (await context.startRendering()).getChannelData(0);
     let peak = 0;

@@ -97,6 +97,13 @@
     <button id="btn-lookup" class="icon-btn" aria-label="Look up a word">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="line" cx="10.5" cy="10.5" r="6"/><path class="line" d="M15 15l5 5"/></svg>
     </button>
+    <button id="btn-sound" class="icon-btn" aria-label="Sound" aria-pressed="true">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9v6h4l5 4V5L8 9z"/>
+        <path class="line on" d="M16.5 9a4.5 4.5 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/>
+        <path class="line off" d="M17 9.5l5 5M22 9.5l-5 5"/>
+      </svg>
+    </button>
     <div class="bag" title="Tiles left in the bag"><b id="bag-count"></b><small>left</small></div>
   </header>
 
@@ -204,6 +211,7 @@
 </div>
 
 <div id="gameover" class="overlay" hidden>
+  <canvas id="party" width="0" height="0" aria-hidden="true"></canvas>
   <div id="gameover-body" class="dialog"></div>
 </div>
 

@@ -371,6 +371,26 @@ svg .line {
   line-height: 1.15;
 }
 
+/* The speaker shows sound waves when on and a cross when muted. */
+#btn-sound[aria-pressed='true'] .off,
+#btn-sound[aria-pressed='false'] .on { display: none; }
+#btn-sound[aria-pressed='false'] { color: var(--muted); }
+
+/* Narrow phones: smaller buttons and closer chips leave the scores room,
+   even with four players. */
+@media (max-width: 419px) {
+  .topbar { gap: 4px; }
+  .topbar .icon-btn { width: 38px; }
+
+  .bag {
+    min-width: 40px;
+    padding-inline: 4px;
+  }
+
+  .scores.many .chip { padding-inline: 4px; }
+  .scores.many .chip b { font-size: 1rem; }
+}
+
 .bag b {
   font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
@@ -399,9 +419,13 @@ svg .line {
   --zoom: 1.85;
 }
 
+/* Rows and columns each take an equal share, whatever their squares hold:
+   left to size themselves, the row with the larger centre star grew taller
+   than the rest. */
 .board {
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
+  grid-template-columns: repeat(15, minmax(0, 1fr));
+  grid-template-rows: repeat(15, minmax(0, 1fr));
   gap: 1px;
   width: calc(var(--side) * var(--zoom));
   height: calc(var(--side) * var(--zoom));
@@ -429,6 +453,7 @@ svg .line {
   color: rgba(255, 255, 255, 0.94);
   font-size: calc(var(--t) * 0.36);
   font-weight: 700;
+  line-height: 1;
   letter-spacing: -0.04em;
   pointer-events: none;
 }
@@ -683,10 +708,11 @@ svg .line {
     max-width: none;
   }
 
+  /* The buttons on the first row, the bag at its far end. */
   .topbar {
     display: grid;
     grid-area: top;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto auto auto 1fr auto;
     align-items: start;
   }
 
@@ -706,7 +732,7 @@ svg .line {
   .chip b { grid-column: auto; }
 
   .bag {
-    grid-column: 3;
+    grid-column: -2;
     grid-template-columns: auto auto;
     align-items: baseline;
     gap: 5px;
@@ -948,6 +974,33 @@ svg .line {
   gap: 3px;
   padding-left: 1.6em;
   font-size: 0.88rem;
+}
+
+/* Celebration, as in Cribbage. While a win is celebrated the game-over
+   overlay is see-through and its box invisible; then the backdrop darkens and
+   the box grows into place, in front of the last of the confetti. */
+
+#gameover { transition: background-color 0.4s; }
+#gameover.party { background: transparent; }
+
+#gameover-body {
+  position: relative;
+  z-index: 1;
+  transition: opacity 0.35s, transform 0.35s ease-out;
+}
+
+#gameover.party #gameover-body {
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+#party {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* Short screens: dialogs tighten so most fit without scrolling. */

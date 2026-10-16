@@ -19,7 +19,8 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - On a phone, **Zoom** (or a double-tap on an empty square) enlarges the board; drag the board to look around it.
 - **Moves**, under the messages, lists every turn of the game so far with each player's running total.
 - **Statistics** on the menu shows your record against each computer level, results between people by name, best plays and games, totals, and the last twenty games.
-- Sound effects can be switched off with **Sound** on the menu.
+- A win by a person is celebrated with fireworks, confetti and a brass fanfare (the same as Cribbage's) before the results appear. Tap to skip to them.
+- The speaker button mutes and unmutes sound effects, as does **Sound** on the menu.
 - Keyboard: click a square and type the word; click the square again to type downwards. Shift and a letter lays a blank as that letter. The arrow keys move the cursor, `Backspace` takes back the last letter, `Enter` plays and `Escape` takes your tiles back.
 - The **i** button on the menu shows which version is running.
 
@@ -68,6 +69,8 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
 | `js/animate.js` | The count of each play on the board |
 | `js/sound.js` | Sound effects, generated with the Web Audio API (no audio files) |
+| `js/fanfare.js` | The fanfare for a win: a generated brass ensemble with timpani |
+| `js/celebrate.js` | Fireworks and confetti for a won game |
 | `js/ui.js` | Drawing, the menu and dialogs, turns, zoom, typing and storage |
 | `words/` | The word lists |
-| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, statistics and sound |
+| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, statistics, the celebration and sound |
