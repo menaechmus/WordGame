@@ -484,11 +484,22 @@ svg .line {
   display: grid;
   flex: 1;
   align-content: center;
+  justify-items: center;
   gap: 1px;
   min-height: 2.9em;
   font-size: 0.86rem;
   line-height: 1.35;
   text-align: center;
+}
+
+.moves-btn {
+  margin-top: 3px;
+  padding: 2px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 #prompt { color: var(--muted); }
@@ -657,6 +668,7 @@ svg .line {
   .status {
     grid-area: status;
     align-content: start;
+    justify-items: start;
     text-align: left;
   }
 
@@ -823,6 +835,68 @@ svg .line {
   display: grid;
   gap: 8px;
   padding-left: 1.2em;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+.btn.danger { color: var(--warn); }
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--seat0);
+  vertical-align: 0.05em;
+}
+
+.dot.seat1 { background: var(--seat1); }
+.dot.seat2 { background: var(--seat2); }
+.dot.seat3 { background: var(--seat3); }
+
+/* The moves list scrolls inside its box, so Close stays in reach. */
+.moves-body {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.moves th,
+.moves td { white-space: nowrap; }
+
+.moves th:nth-child(2),
+.moves td:nth-child(2) { text-align: left; }
+
+.moves tbody th { font-weight: 500; }
+.moves .end th,
+.moves .end td { border-top: 2px solid var(--line); }
+
+.bingo-mark { color: var(--gold); }
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+}
+
+.facts dd {
+  font-weight: 600;
+  text-align: right;
+}
+
+.facts dd .muted {
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+
+.recent {
+  display: grid;
+  gap: 3px;
+  padding-left: 1.6em;
+  font-size: 0.88rem;
 }
 
 /* Short screens: dialogs tighten so most fit without scrolling. */

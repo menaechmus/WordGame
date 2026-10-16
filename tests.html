@@ -22,6 +22,7 @@ import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from '.
 import { generateMoves, placementsFor } from './js/moves.js';
 import { chooseMove, topHints, leaveValue, think } from './js/ai.js';
 import { SOUNDS, renderSound } from './js/sound.js';
+import { emptyStats, loadStats, recordGame, RECENT } from './js/stats.js';
 
 const results = [];
 const notes = [];
@@ -626,6 +627,93 @@ test('hints: the five best plays, one placing of each word, best first', () => {
     if (!result.ok || result.score !== hint.score) throw new Error(`${hint.word}: ${result.error}`);
   }
   notes.push(`hints for RETAINS: ${hints.map(h => `${h.word} ${h.name} ${h.score}`).join(', ')}`);
+});
+
+// ---- Statistics ---------------------------------------------------------
+
+// A finished game with just what the statistics read. Each play is
+// [seat, word, score, bingo]; scores are the players' finals.
+function finished({ mode = 'ai', difficulty = 'hard', names = ['You', 'Computer'], scores, plays = [], swaps = [], hints = [] }) {
+  const players = names.map((name, seat) => ({ name, ai: mode === 'ai' && seat === 1, score: scores[seat], hints: hints[seat] ?? 0 }));
+  const best = Math.max(...scores);
+  return {
+    mode,
+    difficulty,
+    players,
+    winners: scores.flatMap((score, seat) => (score === best ? [seat] : [])),
+    moves: [
+      ...plays.map(([player, word, score, bingo = false]) => ({ player, type: 'play', word, score, bingo })),
+      ...swaps.map(player => ({ player, type: 'exchange', count: 3 })),
+    ],
+  };
+}
+
+test('stats: games against the computer, by level, with streaks and the biggest win', () => {
+  const stats = emptyStats();
+  recordGame(stats, finished({ scores: [300, 250], plays: [[0, 'QUIZ', 44], [0, 'RETAINS', 66, true], [1, 'AXE', 30]], hints: [2] }), '2026-10-01');
+  recordGame(stats, finished({ scores: [400, 200], plays: [[0, 'OXYPHENBUTAZONE', 120]], swaps: [0, 0, 1] }), '2026-10-02');
+  recordGame(stats, finished({ scores: [200, 300] }), '2026-10-03');
+  recordGame(stats, finished({ scores: [310, 310] }), '2026-10-04');
+  recordGame(stats, finished({ difficulty: 'easy', scores: [350, 100] }), '2026-10-05');
+  equal(stats.ai.hard, { games: 4, wins: 2, losses: 1, ties: 1, points: 1210, bestGame: 400, streak: 0, bestStreak: 2, bestMargin: 200 }, 'hard');
+  equal(stats.ai.easy.wins, 1, 'easy');
+  equal(stats.totals, { games: 5, plays: 3, points: 230, bingos: 1, hints: 2, swaps: 2 }, 'totals: the computer\'s plays not counted');
+  equal(stats.records.bestPlay, { score: 120, word: 'OXYPHENBUTAZONE', name: 'You', date: '2026-10-02' }, 'best play');
+  equal(stats.records.bestGame, { score: 400, name: 'You', date: '2026-10-02' }, 'best game');
+  equal(stats.records.mostBingos, { count: 1, name: 'You', date: '2026-10-01' }, 'most bingos');
+});
+
+test('stats: games between people are kept by name, and a tie is no win', () => {
+  const stats = emptyStats();
+  recordGame(stats, finished({ mode: 'local', names: ['Ann', 'Bob'], scores: [300, 280] }));
+  recordGame(stats, finished({ mode: 'local', names: ['ann', 'Bob', 'Cy'], scores: [250, 250, 100] }));
+  equal(stats.people.ann, { name: 'ann', games: 2, wins: 1, bestGame: 300 }, 'Ann, whatever her capitals');
+  equal(stats.people.bob, { name: 'Bob', games: 2, wins: 0, bestGame: 280 }, 'Bob');
+  equal(stats.people.cy.games, 1, 'Cy');
+  equal(stats.totals.games, 2, 'games');
+});
+
+test('stats: the recent games list keeps the newest twenty', () => {
+  const stats = emptyStats();
+  for (let i = 0; i < 25; i++) recordGame(stats, finished({ scores: [100 + i, 50] }), `2026-10-${String(i + 1).padStart(2, '0')}`);
+  equal(stats.recent.length, RECENT, 'length');
+  equal(stats.recent[0].players[0].score, 124, 'newest first');
+  equal(stats.recent[0], { date: '2026-10-25', mode: 'ai', difficulty: 'hard', players: [{ name: 'You', score: 124 }, { name: 'Computer', score: 50 }], winners: [0] }, 'entry');
+});
+
+test('stats: damaged or old saved data falls back instead of breaking', () => {
+  const stats = loadStats({
+    ai: { hard: { games: '7', wins: 3 }, impossible: { games: 9 } },
+    people: { ann: { name: 'Ann', games: 2, wins: 'x' }, bob: 'nonsense' },
+    records: { bestPlay: { score: 50, word: 12 } },
+    recent: [{ date: '2026-10-01', players: [{ name: 'You', score: 'lots' }], winners: [0, 'x'] }, 'junk'],
+  });
+  equal(stats.ai.hard.games, 0, 'text where a number belongs');
+  equal(stats.ai.hard.wins, 3, 'good numbers kept');
+  equal(Object.keys(stats.ai), ['easy', 'medium', 'hard'], 'unknown levels dropped');
+  equal(stats.people, { ann: { name: 'Ann', games: 2, wins: 0, bestGame: 0 } }, 'people');
+  equal(stats.records.bestPlay, { score: 50, word: '', name: '', date: '' }, 'record');
+  equal(stats.recent, [{ date: '2026-10-01', mode: '', difficulty: '', players: [{ name: 'You', score: 0 }], winners: [0] }], 'recent');
+  equal(loadStats(null), emptyStats(), 'nothing saved');
+  equal(loadStats('garbage'), emptyStats(), 'garbage saved');
+});
+
+test('stats: a real game is recorded and survives saving', () => {
+  const random = seeded(21);
+  const game = newGame({ mode: 'ai', difficulty: 'medium', players: [{ name: 'You' }, { name: 'Computer', ai: true }] }, random);
+  while (game.phase === 'play') {
+    const seat = game.turn;
+    const choice = think({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: seat ? 'medium' : 'hard' }, words, random);
+    if (choice.type === 'play') play(game, seat, choice.tiles, valid);
+    else if (choice.type === 'exchange') exchange(game, seat, choice.ids, random);
+    else pass(game, seat);
+  }
+  const stats = emptyStats();
+  recordGame(stats, game);
+  equal(loadStats(JSON.parse(JSON.stringify(stats))), stats, 'round trip');
+  equal(stats.ai.medium.games, 1, 'counted under medium');
+  equal(stats.totals.plays, game.moves.filter(m => m.player === 0 && m.type === 'play').length, 'plays');
+  notes.push(`stats: recorded ${game.players.map(p => `${p.name} ${p.score}`).join(', ')}; best play ${stats.records.bestPlay.word} ${stats.records.bestPlay.score}`);
 });
 
 // ---- Sound --------------------------------------------------------------

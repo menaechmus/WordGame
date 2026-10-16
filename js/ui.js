@@ -11,15 +11,17 @@ import { setupInput } from './input.js';
 import { startThinker, ask } from './thinker.js';
 import { countPlay } from './animate.js';
 import { playSound, setMuted, unlockSound } from './sound.js';
+import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '0.3.0';
+const VERSION = '0.4.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
 const SETTINGS_KEY = 'wordgame.settings';
 const GAME_KEY = 'wordgame.game';
+const STATS_KEY = 'wordgame.stats';
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const LABELS = { TW: '3W', DW: '2W', TL: '3L', DL: '2L' };
 
@@ -69,6 +71,8 @@ const listText = items => (items.length < 2 ? items.join('') : `${items.slice(0,
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 const settings = loadSettings();
+const stats = loadStats(load(STATS_KEY));
+let resetArmed = false;
 let dict = null; // the word list, once it has loaded
 let wordsFailed = false;
 let game = null;
@@ -258,6 +262,7 @@ function render() {
   $('prompt').classList.toggle('warn', warn);
   drawButtons(result);
 
+  $('btn-moves').hidden = !game.moves.length;
   $('rack-cover').hidden = !covered();
   if (covered()) $('btn-reveal').textContent = `Show ${nameOf(game.turn)}’s tiles`;
 
@@ -293,9 +298,110 @@ function gameOverHtml() {
     </table>
     <button class="btn primary" data-do="again">Play again</button>
     <div class="row">
+      <button class="btn" data-do="stats">Statistics</button>
+      <button class="btn" data-do="moves">Moves</button>
+    </div>
+    <div class="row">
       <button class="btn" data-do="board">See the board</button>
       <button class="btn" data-do="menu">Menu</button>
     </div>`;
+}
+
+const dot = seat => `<i class="dot seat${seat}"></i>`;
+const signed = n => (n > 0 ? `+${n}` : `${n}`);
+
+// Every turn so far, with each player's running total, and at the end what
+// the tiles left on the racks cost or brought.
+function movesHtml() {
+  const totals = game.players.map(() => 0);
+  const rows = game.moves.map(move => {
+    let what;
+    if (move.type === 'play') {
+      totals[move.player] += move.score;
+      const more = move.words.length > 1 ? ` <span class="muted">+${move.words.length - 1}</span>` : '';
+      what = `${move.word}${more} <span class="muted">${move.name}</span>${move.bingo ? ' <span class="bingo-mark" title="All seven tiles">★</span>' : ''}`;
+    } else {
+      what = `<span class="muted">${move.type === 'exchange' ? `Swapped ${move.count}` : 'Passed'}</span>`;
+    }
+    return `<tr><th>${dot(move.player)}${escapeHtml(nameOf(move.player))}</th><td>${what}</td><td>${move.score ?? ''}</td><td class="muted">${totals[move.player]}</td></tr>`;
+  });
+  if (game.ending) {
+    game.players.forEach((player, seat) => {
+      rows.push(`<tr class="end"><th>${dot(seat)}${escapeHtml(player.name)}</th><td class="muted">Tiles left</td><td>${signed(game.ending.adjustments[seat])}</td><td><b>${player.score}</b></td></tr>`);
+    });
+  }
+  if (!rows.length) return '<p class="muted">No moves yet.</p>';
+  return `<table class="grid moves"><thead><tr><th></th><th>Play</th><th>Score</th><th>Total</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+function showMoves() {
+  $('moves-body').innerHTML = movesHtml();
+  $('moves').hidden = false;
+  $('moves-body').scrollTop = $('moves-body').scrollHeight;
+}
+
+const capital = text => text[0].toUpperCase() + text.slice(1);
+const shortDate = date => (date ? new Date(`${date}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '');
+
+function statsHtml() {
+  const percent = (part, whole) => (whole ? `${Math.round((100 * part) / whole)}%` : '–');
+  const average = (points, count) => (count ? Math.round(points / count) : '–');
+  const levelRows = LEVELS.map(level => {
+    const row = stats.ai[level];
+    return `<tr><th>${capital(level)}</th><td>${row.games}</td><td>${row.wins}</td><td>${percent(row.wins, row.games)}</td><td>${average(row.points, row.games)}</td><td>${row.bestGame || '–'}</td></tr>`;
+  }).join('');
+  const most = key => LEVELS.reduce((best, level) => (stats.ai[level][key] > (best ? stats.ai[best][key] : 0) ? level : best), null);
+  const streakLevel = most('bestStreak');
+  const marginLevel = most('bestMargin');
+  const streaks = LEVELS.filter(level => stats.ai[level].streak).map(level => `${capital(level)} ${stats.ai[level].streak}`);
+
+  const { records, totals } = stats;
+  const who = record => (record.name ? ` <span class="muted">${escapeHtml(record.name)}, ${shortDate(record.date)}</span>` : '');
+  const facts = [
+    ['Best play', records.bestPlay.score ? `${records.bestPlay.word} ${records.bestPlay.score}${who(records.bestPlay)}` : '–'],
+    ['Best game', records.bestGame.score ? `${records.bestGame.score}${who(records.bestGame)}` : '–'],
+    ['Longest word', records.longestWord.word ? `${records.longestWord.word}${who(records.longestWord)}` : '–'],
+    ['Most all-seven plays in a game', records.mostBingos.count ? `${records.mostBingos.count}${who(records.mostBingos)}` : '–'],
+    ['Winning streak now', streaks.length ? streaks.join(', ') : '–'],
+    ['Longest winning streak', streakLevel ? `${stats.ai[streakLevel].bestStreak} <span class="muted">${capital(streakLevel)}</span>` : '–'],
+    ['Biggest win', marginLevel ? `by ${stats.ai[marginLevel].bestMargin} <span class="muted">${capital(marginLevel)}</span>` : '–'],
+    ['Games finished', totals.games],
+    ['Points per play', average(totals.points, totals.plays)],
+    ['Plays using all seven', totals.bingos],
+    ['Hints used', totals.hints],
+    ['Swaps', totals.swaps],
+  ];
+  const people = Object.values(stats.people).sort((a, b) => b.games - a.games);
+  const peopleRows = people.map(person => `<tr><th>${escapeHtml(person.name)}</th><td>${person.games}</td><td>${person.wins}</td><td>${person.bestGame}</td></tr>`).join('');
+  const recent = stats.recent
+    .map(entry => {
+      const players = entry.players.map((player, seat) => {
+        const text = `${escapeHtml(player.name)} ${player.score}`;
+        return entry.winners.includes(seat) ? `<b>${text}</b>` : text;
+      });
+      const kind = entry.mode === 'ai' ? capital(entry.difficulty || 'medium') : 'People';
+      return `<li><span class="muted">${shortDate(entry.date)}</span> ${players.join(', ')} <span class="muted">${kind}</span></li>`;
+    })
+    .join('');
+  return `
+    <h3>Against the computer</h3>
+    <table class="grid">
+      <thead><tr><th></th><th>Played</th><th>Won</th><th>Win&nbsp;%</th><th>Average</th><th>Best</th></tr></thead>
+      <tbody>${levelRows}</tbody>
+    </table>
+    ${people.length ? `<h3>Between people</h3><table class="grid"><thead><tr><th></th><th>Played</th><th>Won</th><th>Best</th></tr></thead><tbody>${peopleRows}</tbody></table>` : ''}
+    <h3>Records</h3>
+    <dl class="facts">${facts.map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`).join('')}</dl>
+    <h3>Recent games</h3>
+    ${recent ? `<ol class="recent">${recent}</ol>` : '<p class="muted">No games finished yet.</p>'}
+    <p class="muted">Finished games are saved in this browser, on this device.</p>`;
+}
+
+function showStats() {
+  resetArmed = false;
+  $('btn-reset').textContent = 'Reset statistics';
+  $('stats-body').innerHTML = statsHtml();
+  $('stats').hidden = false;
 }
 
 // ---- Words for what happened --------------------------------------------
@@ -346,6 +452,10 @@ function commit(action, append = false) {
   resultsShown = true;
   messages = append ? [...messages, ...describe(game.events)] : describe(game.events);
   store(GAME_KEY, game.phase === 'over' ? null : game);
+  if (game.phase === 'over') {
+    recordGame(stats, game);
+    store(STATS_KEY, stats);
+  }
 
   // New tiles slide onto the rack of whoever is looking at it.
   const refilled = game.events.find(event => event.drawn?.length);
@@ -668,7 +778,7 @@ function onPass() {
   confirmFirst('Pass?', 'Your turn ends and you score nothing.', 'Pass', () => commit(() => pass(game, game.turn)));
 }
 
-const DIALOGS = ['picker', 'swap', 'confirm', 'hints', 'lookup', 'rules', 'about'];
+const DIALOGS = ['picker', 'swap', 'confirm', 'hints', 'lookup', 'moves', 'stats', 'rules', 'about'];
 const dialogOpen = () => DIALOGS.some(id => !$(id).hidden);
 
 // ---- Screens ------------------------------------------------------------
@@ -821,10 +931,27 @@ $('btn-confirm').addEventListener('click', () => {
   action?.();
 });
 
+$('btn-stats').addEventListener('click', showStats);
+$('btn-moves').addEventListener('click', showMoves);
+
+// The first press arms the button, the second erases.
+$('btn-reset').addEventListener('click', () => {
+  if (!resetArmed) {
+    resetArmed = true;
+    $('btn-reset').textContent = 'Tap again to erase';
+    return;
+  }
+  Object.assign(stats, emptyStats());
+  store(STATS_KEY, stats);
+  showStats();
+});
+
 $('gameover').addEventListener('click', event => {
   const action = event.target.dataset.do;
   if (action === 'again') start();
   else if (action === 'menu') showMenu();
+  else if (action === 'stats') showStats();
+  else if (action === 'moves') showMoves();
   else if (action === 'board') {
     resultsShown = false;
     render();
