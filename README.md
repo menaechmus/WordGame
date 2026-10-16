@@ -1,13 +1,16 @@
 # Word Game
 
-A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Pass one device between two to four people. Works with touch, mouse and keyboard, on phones and desktops.
+A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Play against the computer (easy, medium or hard) or pass one device between two to four people. Works with touch, mouse and keyboard, on phones and desktops.
 
 It is a static page: plain HTML, CSS and JavaScript modules, with no build step and no dependencies.
 
-This is a work in progress. Next to come: the computer opponent, hints and word lookup, scoring animations, sound, and statistics.
+This is a work in progress. Next to come: scoring animations, sound, and statistics.
 
 ## Play
 
+- Against the computer, Easy and Medium keep to everyday words; Hard knows every word in the list and thinks about the tiles it keeps.
+- **Hint** lists the five best plays for your tiles; tap one to lay it on the board. Hints can be switched off on the menu.
+- The magnifier looks up whether a word is in the list, with a link to its meaning. It shows while **Word check** is on.
 - Tap a tile on your rack and then a square, or drag the tile there. Tap a tile you have laid to take it back, or drag it somewhere else. **Recall** takes them all back.
 - Drag tiles along the rack to arrange them, or press **Shuffle**.
 - A blank asks which letter it should be. Tap it again on the board to change its mind.
@@ -56,7 +59,10 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/dictionary.js` | The word list as a compact trie, and word lookups |
 | `js/rules.js` | Whether a play is legal, and what it scores |
 | `js/game.js` | Turns, racks, exchanges, passes and the end of the game, as a plain game object and the actions that change it |
+| `js/moves.js` | Every legal play for a rack (the Appel–Jacobson method) |
+| `js/ai.js` | The computer's three levels, and hints |
+| `js/worker.js`, `js/thinker.js` | The computer's thinking in a background worker, and the page's side of it |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
 | `js/ui.js` | Drawing, the menu and dialogs, turns and storage |
 | `words/` | The word lists |
-| `tests.html` | Tests for the tiles, board, word lists, rules and game |
+| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding and the computer |

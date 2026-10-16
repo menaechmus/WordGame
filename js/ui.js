@@ -4,16 +4,18 @@
 
 import { TILES, VALUES, BLANK, isBlank, shuffle } from './tiles.js';
 import { CENTER, PREMIUMS } from './board.js';
-import { isWord, loadDictionary, WORD_LISTS } from './dictionary.js';
+import { isWord } from './dictionary.js';
 import { evaluatePlay } from './rules.js';
-import { newGame, play, exchange, pass, arrange, canExchange } from './game.js';
+import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './game.js';
 import { setupInput } from './input.js';
+import { startThinker, ask } from './thinker.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '0.1.0';
-const RELEASED = '15 October 2026';
+const VERSION = '0.2.0';
+const RELEASED = '16 October 2026';
 
+const AI_DELAY = 800; // the computer takes at least this long over a move
 const SETTINGS_KEY = 'wordgame.settings';
 const GAME_KEY = 'wordgame.game';
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -46,7 +48,7 @@ function parseValue(text) {
 
 // Saved settings are only accepted if the menu offers that value.
 function loadSettings() {
-  const settings = { mode: 'local', difficulty: 'medium', players: 2, names: ['', '', '', ''], lookup: true };
+  const settings = { mode: 'ai', difficulty: 'medium', players: 2, names: ['', '', '', ''], hints: true, lookup: true };
   const saved = load(SETTINGS_KEY);
   for (const group of document.querySelectorAll('.choice')) {
     const key = group.dataset.setting;
@@ -77,17 +79,20 @@ let picking = null; // the square of a blank waiting for its letter
 let swapping = new Set(); // tiles chosen in the swap dialog
 let confirmed = null; // what the confirm dialog's button does
 let resultsShown = true; // the game-over box, until put aside to look at the board
+let aiTimer = 0;
+let thinking = 0; // the computer's question in flight; 0 when there is none
+let questions = 0;
+let shownHints = []; // the plays listed in the hints box
 
-loadDictionary(WORD_LISTS.full).then(
-  loaded => {
-    dict = loaded;
-    if (game) render();
-  },
-  () => {
-    wordsFailed = true;
-    if (game) render();
-  },
-);
+// The word list arrives from the worker, which also does the computer's
+// thinking.
+startThinker((loaded, error) => {
+  if (loaded) dict = loaded;
+  else wordsFailed = Boolean(error);
+  document.body.dataset.words = loaded ? 'ready' : 'failed'; // for the test driver
+  if (game) render();
+  if (!$('lookup').hidden) drawLookup();
+});
 
 const valid = word => isWord(dict, word);
 
@@ -203,6 +208,9 @@ function drawButtons(result) {
   shuffler.disabled = recall ? !acting : over || covered() || isAi(viewer()) || rackTiles(viewer()).length < 2;
   $('btn-exchange').disabled = !acting || recall || !canExchange(game);
   $('btn-pass').disabled = !acting || recall;
+  $('btn-hint').hidden = !settings.hints;
+  $('btn-hint').disabled = !acting;
+  $('btn-lookup').hidden = !settings.lookup;
 }
 
 function render() {
@@ -287,8 +295,9 @@ function describe(events) {
 // ---- Actions ------------------------------------------------------------
 
 // Runs one game action, then saves and redraws. A refused action changes
-// nothing in the game and says why.
-function commit(action) {
+// nothing in the game and says why. The computer's moves are added to what
+// was said before (`append`), so a person's own play is still there to read.
+function commit(action, append = false) {
   try {
     action();
   } catch (error) {
@@ -300,9 +309,107 @@ function commit(action) {
   selected = null;
   notice = '';
   resultsShown = true;
-  messages = describe(game.events);
+  messages = append ? [...messages, ...describe(game.events)] : describe(game.events);
   store(GAME_KEY, game.phase === 'over' ? null : game);
   render();
+  scheduleAi();
+}
+
+// The computer's turn: its question goes to the worker at once, and the
+// answer is played no sooner than AI_DELAY after, so a move never flashes
+// past. Leaving the game drops the question.
+function scheduleAi() {
+  clearTimeout(aiTimer);
+  thinking = 0;
+  if (!game || game.phase !== 'play' || !isAi(game.turn)) return;
+  const question = (thinking = ++questions);
+  const seat = game.turn;
+  const asked = performance.now();
+  const answered = choice => {
+    if (thinking !== question) return;
+    aiTimer = setTimeout(() => {
+      if (thinking !== question) return;
+      thinking = 0;
+      commit(() => {
+        try {
+          if (choice.type === 'play') play(game, seat, choice.tiles, valid);
+          else if (choice.type === 'exchange') exchange(game, seat, choice.ids);
+          else pass(game, seat);
+        } catch {
+          pass(game, seat); // never expected, but the game must go on
+        }
+      }, true);
+    }, Math.max(0, AI_DELAY - (performance.now() - asked)));
+  };
+  ask({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: game.difficulty }).then(
+    answered,
+    () => answered({ type: 'pass' }),
+  );
+}
+
+function stopAi() {
+  clearTimeout(aiTimer);
+  thinking = 0;
+}
+
+// Hints: the best plays for the rack, from the worker. Asking counts as
+// using a hint, once the answer is shown.
+async function onHint() {
+  if (!canAct() || !settings.hints) return;
+  const [asked, seat] = [game, game.turn];
+  $('hints-text').textContent = 'Looking for plays…';
+  $('hints-list').innerHTML = '';
+  $('hints').hidden = false;
+  try {
+    shownHints = await ask({ type: 'hints', board: game.board, rack: game.players[seat].rack });
+  } catch {
+    $('hints-text').textContent = 'No hints just now. Try again in a moment.';
+    return;
+  }
+  if ($('hints').hidden || game !== asked || game.turn !== seat) return;
+  noteHint(game, seat);
+  store(GAME_KEY, game);
+  if (!shownHints.length) {
+    $('hints-text').textContent = canExchange(game) ? 'No play fits these tiles. Try swapping some.' : 'No play fits these tiles, so this turn is a pass.';
+    return;
+  }
+  $('hints-text').textContent = 'Tap one to lay it on the board.';
+  $('hints-list').innerHTML = shownHints
+    .map((hint, i) => `<li><button class="hint" data-hint="${i}"><b>${hint.word}</b><span>${hint.name}</span><span>${hint.score}</span></button></li>`)
+    .join('');
+}
+
+function useHint(i) {
+  const hint = shownHints[i];
+  $('hints').hidden = true;
+  if (!hint || !canAct()) return;
+  pending = hint.tiles.map(tile => ({ ...tile }));
+  selected = null;
+  notice = '';
+  render();
+}
+
+function openLookup() {
+  $('lookup-word').value = '';
+  drawLookup();
+  $('lookup').hidden = false;
+  $('lookup-word').focus();
+}
+
+function drawLookup() {
+  const word = $('lookup-word').value.toUpperCase().replace(/[^A-Z]/g, '');
+  let text = 'Type a word to see if it can be played.';
+  let known = null;
+  if (word.length === 1) text = 'A word needs at least two letters.';
+  else if (word && !dict) text = wordsFailed ? 'The word list did not load.' : 'Loading the word list…';
+  else if (word) {
+    known = isWord(dict, word);
+    text = known ? `${word} is a word.` : `${word} is not in the word list.`;
+  }
+  $('lookup-result').textContent = text;
+  $('lookup-result').className = `lookup-result${known === true ? ' good' : known === false ? ' bad' : ''}`;
+  $('lookup-link').hidden = !known;
+  if (known) $('lookup-link').href = `https://en.wiktionary.org/wiki/${word.toLowerCase()}`;
 }
 
 const isFree = index => !game.board[index] && !pending.some(tile => tile.index === index);
@@ -434,7 +541,7 @@ function openSwap() {
   $('swap').hidden = false;
 }
 
-function ask(title, text, button, action) {
+function confirmFirst(title, text, button, action) {
   $('confirm-title').textContent = title;
   $('confirm-text').textContent = text;
   $('btn-confirm').textContent = button;
@@ -444,10 +551,10 @@ function ask(title, text, button, action) {
 
 function onPass() {
   if (!canAct() || pending.length) return;
-  ask('Pass?', 'Your turn ends and you score nothing.', 'Pass', () => commit(() => pass(game, game.turn)));
+  confirmFirst('Pass?', 'Your turn ends and you score nothing.', 'Pass', () => commit(() => pass(game, game.turn)));
 }
 
-const DIALOGS = ['picker', 'swap', 'confirm', 'rules', 'about'];
+const DIALOGS = ['picker', 'swap', 'confirm', 'hints', 'lookup', 'rules', 'about'];
 const dialogOpen = () => DIALOGS.some(id => !$(id).hidden);
 
 // ---- Screens ------------------------------------------------------------
@@ -484,11 +591,16 @@ function playersFor() {
 
 function showMenu() {
   input.cancel();
+  stopAi();
   for (const group of document.querySelectorAll('.choice')) {
     for (const button of group.children) {
       button.setAttribute('aria-pressed', parseValue(button.dataset.value) === settings[group.dataset.setting]);
     }
   }
+  const people = settings.mode !== 'ai';
+  $('row-difficulty').hidden = people;
+  $('row-players').hidden = !people;
+  $('row-names').hidden = !people;
   for (const field of document.querySelectorAll('[data-name]')) {
     const i = Number(field.dataset.name);
     field.hidden = i >= settings.players;
@@ -518,6 +630,7 @@ function start(saved = null) {
   $('table').hidden = false;
   store(GAME_KEY, game);
   render();
+  scheduleAi();
 }
 
 // ---- Wiring -------------------------------------------------------------
@@ -550,7 +663,15 @@ $('btn-play').addEventListener('click', onPlay);
 $('btn-shuffle').addEventListener('click', onShuffle);
 $('btn-exchange').addEventListener('click', openSwap);
 $('btn-pass').addEventListener('click', onPass);
+$('btn-hint').addEventListener('click', onHint);
+$('btn-lookup').addEventListener('click', openLookup);
 $('btn-reveal').addEventListener('click', reveal);
+
+$('hints-list').addEventListener('click', event => {
+  const button = event.target.closest('[data-hint]');
+  if (button) useHint(Number(button.dataset.hint));
+});
+$('lookup-word').addEventListener('input', drawLookup);
 
 $('letters').addEventListener('click', event => {
   const button = event.target.closest('[data-letter]');

@@ -538,7 +538,7 @@ svg .line {
   justify-items: center;
   align-content: center;
   gap: 2px;
-  width: 58px;
+  width: 54px;
   min-height: 52px;
   padding: 4px 2px;
   border: 1px solid var(--line);
@@ -632,6 +632,23 @@ svg .line {
   .actions .play { flex: 1.6; }
 }
 
+/* A phone on its side has little height: the buttons lose their labels and
+   the score rows tighten up. (Dialogs too: see the end of the file.) */
+@media (orientation: landscape) and (max-height: 540px) {
+  .tool {
+    min-height: 44px;
+    padding: 2px;
+  }
+
+  .tool span { display: none; }
+  .actions .play { min-height: 44px; }
+
+  .chip {
+    min-height: 32px;
+    padding-block: 0;
+  }
+}
+
 /* Overlays */
 
 .overlay {
@@ -693,6 +710,55 @@ svg .line {
   box-shadow: 0 0 0 3px var(--gold), 0 6px 10px rgba(0, 0, 0, 0.45);
 }
 
+.hint-list {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.hint {
+  display: grid;
+  grid-template-columns: 1fr auto 3ch;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+
+.hint b { letter-spacing: 0.04em; }
+.hint span { color: var(--muted); font-size: 0.85rem; }
+.hint span:last-child { color: var(--gold); font-size: 1rem; font-weight: 700; text-align: right; }
+
+.lookup-word {
+  min-height: 48px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink);
+  font-size: 1.2rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.lookup-word::placeholder {
+  color: var(--muted);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.lookup-result { min-height: 1.4em; }
+.lookup-result.good { color: #8fe3a6; font-weight: 600; }
+.lookup-result.bad { color: var(--warn); }
+
 .grid {
   width: 100%;
   border-collapse: collapse;
@@ -723,6 +789,23 @@ svg .line {
   display: grid;
   gap: 8px;
   padding-left: 1.2em;
+}
+
+/* Short screens: dialogs tighten so most fit without scrolling. */
+@media (max-height: 540px) {
+  .dialog {
+    gap: 8px;
+    padding: 14px 18px;
+  }
+
+  .dialog h2 { font-size: 1.15rem; }
+
+  .hint {
+    min-height: 34px;
+    padding-block: 3px;
+  }
+
+  .dialog .btn { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

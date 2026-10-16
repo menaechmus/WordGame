@@ -19,6 +19,8 @@ import { SIZE, CENTER, PREMIUMS, LETTER_MULT, WORD_MULT, row, col, at, squareNam
 import { buildDictionary, isWord, loadDictionary, WORD_LISTS } from './js/dictionary.js';
 import { evaluatePlay, wordCells, BINGO } from './js/rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './js/game.js';
+import { generateMoves, placementsFor } from './js/moves.js';
+import { chooseMove, topHints, leaveValue, think } from './js/ai.js';
 
 const results = [];
 const notes = [];
@@ -453,6 +455,176 @@ test('game: survives a JSON round trip mid-game', () => {
   pass(game, game.turn);
   conserved(game);
   equal([game.moves.length, game.scoreless], [2, 1], 'moves');
+});
+
+// ---- Moves --------------------------------------------------------------
+
+const moveKey = tiles => tiles.map(t => `${t.index}${t.letter}${t.blank ? '*' : ''}`).sort().join(' ');
+
+// Every way to lay some of the rack's tiles in a line, each judged by
+// evaluatePlay: far too slow for the game, but simple enough to trust.
+function bruteForce(board, rack, check) {
+  const found = new Map();
+  const sequences = [];
+  const grow = (sequence, left) => {
+    if (sequence.length) sequences.push(sequence);
+    left.forEach((id, i) => {
+      const rest = left.filter((_, j) => j !== i);
+      const letters = TILES[id] === BLANK ? [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'] : [TILES[id]];
+      for (const letter of letters) grow([...sequence, { id, letter, blank: TILES[id] === BLANK }], rest);
+    });
+  };
+  grow([], rack);
+  for (const across of [true, false]) {
+    for (let start = 0; start < SIZE * SIZE; start++) {
+      if (board[start]) continue;
+      for (const sequence of sequences) {
+        const placements = [];
+        let index = start;
+        for (const tile of sequence) {
+          while (index !== null && board[index]) index = across ? (col(index) < SIZE - 1 ? index + 1 : null) : index < 210 ? index + SIZE : null;
+          if (index === null) break;
+          placements.push({ index, id: tile.id, letter: tile.letter, blank: tile.blank });
+          index = across ? (col(index) < SIZE - 1 ? index + 1 : null) : index < 210 ? index + SIZE : null;
+        }
+        if (placements.length < sequence.length) continue;
+        const result = evaluatePlay(board, placements, check);
+        if (result.ok) found.set(moveKey(placements), result.score);
+      }
+    }
+  }
+  return found;
+}
+
+function sameMoves(board, letters) {
+  const take = tileSource();
+  const rack = [...letters].map(take);
+  const generated = new Map(generateMoves(dict, board, rack).map(move => [moveKey(move.tiles), move.score]));
+  const brute = bruteForce(board, rack, valid);
+  const missing = [...brute.keys()].filter(key => !generated.has(key));
+  const extra = [...generated.keys()].filter(key => !brute.has(key));
+  const wrong = [...brute].filter(([key, score]) => generated.has(key) && generated.get(key) !== score);
+  if (missing.length || extra.length || wrong.length) {
+    throw new Error(`${letters}: missing ${missing.slice(0, 3)} | extra ${extra.slice(0, 3)} | wrong scores ${JSON.stringify(wrong.slice(0, 3))}`);
+  }
+  return generated.size;
+}
+
+// A board with words running both ways, close to the edges and to each other.
+function busyBoard() {
+  const take = tileSource();
+  const board = emptyBoard();
+  preset(board, take, 'QUIZ', 'H8', false);
+  preset(board, take, 'ZEBRA', 'H11', true);
+  preset(board, take, 'OX', 'C5', true);
+  preset(board, take, 'ATE', 'L11', false);
+  preset(board, take, 'JIVE', 'A1', true);
+  preset(board, take, 'NOT', 'O3', false);
+  return board;
+}
+
+test('moves: first plays match a brute-force search', () => {
+  notes.push(`moves: ${sameMoves(emptyBoard(), 'CATS')} first plays for CATS`);
+});
+
+test('moves: plays on a busy board match a brute-force search', () => {
+  notes.push(`moves: ${sameMoves(busyBoard(), 'SEAT')} plays for SEAT on a busy board`);
+});
+
+test('moves: plays with a blank match a brute-force search', () => {
+  notes.push(`moves: ${sameMoves(busyBoard(), 'Ea')} plays for E and a blank`);
+});
+
+test('moves: every play with a full rack and two blanks is legal and scored the same', () => {
+  const board = busyBoard();
+  const take = tileSource();
+  const rack = [...'RSTzeAI'].map(take);
+  const started = performance.now();
+  const moves = generateMoves(dict, board, rack);
+  const took = performance.now() - started;
+  for (const move of moves) {
+    const result = evaluatePlay(board, placementsFor(move, rack), valid);
+    if (!result.ok || result.score !== move.score || result.words[0].text !== move.word || result.name !== move.name) {
+      throw new Error(`${move.word} at ${move.name}: ${result.error || `scored ${result.score} and ${move.score}`}`);
+    }
+  }
+  const best = moves.reduce((a, b) => (b.score > a.score ? b : a));
+  notes.push(`moves: ${moves.length} plays for RST, 2 blanks, AI in ${took.toFixed(0)} ms; best ${best.word} ${best.score}`);
+});
+
+test('moves: placementsFor uses blanks only where the play has them', () => {
+  const take = tileSource();
+  const rack = [take('A'), take('z'), take('T')];
+  const tiles = placementsFor({ tiles: [{ index: 1, letter: 'A', blank: true }, { index: 2, letter: 'A', blank: false }] }, rack);
+  equal(tiles.map(t => TILES[t.id]), [BLANK, 'A'], 'tiles');
+});
+
+// ---- Computer -----------------------------------------------------------
+
+const words = { full: dict, common };
+
+// A whole game between computer players, checking after every turn that
+// each tile is in one place and the scores are the sum of the plays.
+function playOut(levels, seed) {
+  const random = seeded(seed);
+  const game = newGame({ mode: 'local', players: levels.map(level => ({ name: level, ai: true })) }, random);
+  for (let turns = 0; game.phase === 'play'; turns++) {
+    if (turns > 400) throw new Error('game did not finish');
+    const seat = game.turn;
+    const choice = think({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: levels[seat] }, words, random);
+    if (choice.type === 'play') play(game, seat, choice.tiles, valid);
+    else if (choice.type === 'exchange') exchange(game, seat, choice.ids, random);
+    else pass(game, seat);
+    conserved(game);
+  }
+  game.players.forEach((player, seat) => {
+    const plays = game.moves.filter(move => move.player === seat).reduce((sum, move) => sum + (move.score ?? 0), 0);
+    equal(player.score, plays + game.ending.adjustments[seat], `${player.name} seat ${seat} score`);
+  });
+  return game;
+}
+
+for (const [levels, seed] of [[['easy', 'medium'], 11], [['hard', 'easy'], 12], [['medium', 'hard', 'easy'], 13]]) {
+  test(`computer: ${levels.join(', ')} play a whole game, legally`, () => {
+    const game = playOut(levels, seed);
+    notes.push(`computer: ${game.players.map(p => `${p.name} ${p.score}`).join(', ')} in ${game.moves.length} turns`);
+  });
+}
+
+test('computer: with no word to make, it swaps, or passes when the bag is low', () => {
+  const take = tileSource();
+  const rack = [...'QZXJKVW'].map(take);
+  equal(generateMoves(dict, emptyBoard(), rack).length, 0, 'no plays');
+  const swap = chooseMove([], rack, 50, 'hard');
+  equal([swap.type, swap.ids.length > 0, swap.ids.every(id => rack.includes(id))], ['exchange', true, true], 'swap');
+  equal(chooseMove([], rack, 3, 'hard'), { type: 'pass' }, 'pass');
+});
+
+test('computer: a blank and an S are worth keeping, a Q and a V are not', () => {
+  if (!(leaveValue(['?', 'S']) > leaveValue(['E', 'R']) && leaveValue(['E', 'R']) > leaveValue(['Q', 'V']))) throw new Error('leave values out of order');
+  if (!(leaveValue(['E', 'R', 'S']) > leaveValue(['I', 'I', 'U']))) throw new Error('doubled vowels should cost');
+});
+
+test('computer: hard takes the best play when the leaves are alike', () => {
+  const take = tileSource();
+  const rack = [...'CAT'].map(take);
+  const moves = generateMoves(dict, emptyBoard(), rack);
+  const choice = chooseMove(moves, rack, 50, 'hard');
+  equal([choice.type, choice.score], ['play', Math.max(...moves.map(m => m.score))], 'best');
+});
+
+test('hints: the five best plays, one placing of each word, best first', () => {
+  const take = tileSource();
+  const rack = [...'RETAINS'].map(take);
+  const hints = topHints(generateMoves(dict, busyBoard(), rack), rack);
+  equal(hints.length, 5, 'five');
+  equal(new Set(hints.map(h => h.word)).size, 5, 'all different words');
+  if (hints.some((h, i) => i && h.score > hints[i - 1].score)) throw new Error('not best first');
+  for (const hint of hints) {
+    const result = evaluatePlay(busyBoard(), hint.tiles, valid);
+    if (!result.ok || result.score !== hint.score) throw new Error(`${hint.word}: ${result.error}`);
+  }
+  notes.push(`hints for RETAINS: ${hints.map(h => `${h.word} ${h.name} ${h.score}`).join(', ')}`);
 });
 
 // ---- Report -------------------------------------------------------------

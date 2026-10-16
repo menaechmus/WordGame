@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14202b">
-<meta name="description" content="A crossword tile game for your browser. Pass one device between friends, or play the computer.">
+<meta name="description" content="A crossword tile game for your browser. Play the computer, or pass one device between friends.">
 <title>Word Game</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect x=%226%22 y=%226%22 width=%2288%22 height=%2288%22 rx=%2216%22 fill=%22%23fbf1d6%22/><text x=%2246%22 y=%2276%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22 font-size=%2266%22 text-anchor=%22middle%22 fill=%22%232d2419%22>W</text><text x=%2280%22 y=%2286%22 font-family=%22system-ui,sans-serif%22 font-weight=%22700%22 font-size=%2222%22 text-anchor=%22middle%22 fill=%22%236c5b45%22>4</text></svg>">
 <link rel="stylesheet" href="css/style.css">
@@ -21,6 +21,21 @@
   </header>
 
   <div class="options">
+    <div class="option">
+      <span>Play against</span>
+      <div class="choice" data-setting="mode">
+        <button data-value="ai">Computer</button>
+        <button data-value="local">People</button>
+      </div>
+    </div>
+    <div class="option" id="row-difficulty">
+      <span>Difficulty</span>
+      <div class="choice" data-setting="difficulty">
+        <button data-value="easy">Easy</button>
+        <button data-value="medium">Medium</button>
+        <button data-value="hard">Hard</button>
+      </div>
+    </div>
     <div class="option" id="row-players">
       <span>Players</span>
       <div class="choice" data-setting="players">
@@ -34,6 +49,13 @@
       <input data-name="1" maxlength="12" placeholder="Player 2" aria-label="Player 2 name" autocomplete="off" spellcheck="false">
       <input data-name="2" maxlength="12" placeholder="Player 3" aria-label="Player 3 name" autocomplete="off" spellcheck="false">
       <input data-name="3" maxlength="12" placeholder="Player 4" aria-label="Player 4 name" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="option">
+      <span>Hints</span>
+      <div class="choice" data-setting="hints">
+        <button data-value="true">On</button>
+        <button data-value="false">Off</button>
+      </div>
     </div>
     <div class="option">
       <span>Word check</span>
@@ -64,6 +86,9 @@
   <header class="topbar">
     <button id="btn-menu" class="icon-btn" aria-label="Menu">☰</button>
     <div id="scores" class="scores"></div>
+    <button id="btn-lookup" class="icon-btn" aria-label="Look up a word">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="line" cx="10.5" cy="10.5" r="6"/><path class="line" d="M15 15l5 5"/></svg>
+    </button>
     <div class="bag" title="Tiles left in the bag"><b id="bag-count"></b><small>left</small></div>
   </header>
 
@@ -101,6 +126,12 @@
       </svg>
       <span>Pass</span>
     </button>
+    <button id="btn-hint" class="tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path class="line" d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.8 10.6c.6.5.8 1.2.8 2.4h6c0-1.2.2-1.9.8-2.4A6 6 0 0 0 12 3z"/>
+      </svg>
+      <span>Hint</span>
+    </button>
     <button id="btn-play" class="btn primary play">Play</button>
   </footer>
 </main>
@@ -123,6 +154,25 @@
       <button class="btn" data-close>Cancel</button>
       <button id="btn-swap" class="btn primary">Swap</button>
     </div>
+  </div>
+</div>
+
+<div id="hints" class="overlay" hidden>
+  <div class="dialog">
+    <h2>Best plays</h2>
+    <p id="hints-text" class="muted"></p>
+    <ol id="hints-list" class="hint-list"></ol>
+    <button class="btn" data-close>Close</button>
+  </div>
+</div>
+
+<div id="lookup" class="overlay" hidden>
+  <div class="dialog">
+    <h2>Look up a word</h2>
+    <input id="lookup-word" class="lookup-word" maxlength="15" placeholder="Type a word" aria-label="Word to look up" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <p id="lookup-result" class="lookup-result" aria-live="polite"></p>
+    <a id="lookup-link" target="_blank" rel="noopener" hidden>What does it mean?</a>
+    <button class="btn" data-close>Close</button>
   </div>
 </div>
 
@@ -152,7 +202,7 @@
       <li><b>Or not.</b> Instead of playing you can swap tiles for new ones (while the bag still holds seven) or pass.</li>
       <li><b>The end.</b> When the bag is empty and someone uses their last tile, the game ends: everyone loses the value of the tiles they still hold, and the player who went out gains it all. Three rounds in a row without a score also end the game.</li>
     </ol>
-    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. On a keyboard, Enter plays and Escape takes your tiles back.</p>
+    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and the magnifier checks whether a word is in the list. On a keyboard, Enter plays and Escape takes your tiles back.</p>
     <button class="btn primary" data-close>Got it</button>
   </div>
 </div>
