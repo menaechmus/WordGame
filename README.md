@@ -6,7 +6,7 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 
 ## Play
 
-- Tap a tile on your rack and then a square, or drag the tile there. Tap a tile you have laid to take it back, or drag it somewhere else. **Recall** takes them all back.
+- Tap a tile on your rack and then a square, or drag the tile there. Tap a tile you have laid to take it back, or drag it somewhere else. Lay a tile on one you laid this turn and the two swap: the old one goes back to the rack, or to the square the new one came from. **Recall** takes them all back.
 - Drag tiles along the rack to arrange them, or press **Shuffle**.
 - A blank asks which letter it should be. Tap it again on the board to change its mind.
 - The **Play** button shows what the tiles laid so far would score.

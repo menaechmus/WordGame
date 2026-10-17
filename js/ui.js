@@ -16,7 +16,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -827,10 +827,21 @@ function drawLookup() {
 
 const isFree = index => !game.board[index] && !pending.some(tile => tile.index === index);
 
+// Lays tile `id` on square `index`, from the rack or from another square. A
+// tile laid this turn that is already there trades places with it: a tile
+// from the rack sends it back to the rack, into the place the new one left,
+// and a tile from another square sends it to that square. Tiles played in
+// earlier turns stay where they are.
 function placeTile(id, index) {
-  if (!canAct() || !isFree(index)) return;
+  if (!canAct() || game.board[index]) return;
   const moving = pending.find(tile => tile.id === id);
-  pending = pending.filter(tile => tile.id !== id);
+  if (moving?.index === index) return;
+  const displaced = pending.find(tile => tile.index === index);
+  pending = pending.filter(tile => tile !== moving && tile !== displaced);
+  if (displaced) {
+    if (moving) pending.push({ ...displaced, index: moving.index });
+    else swapInRack(id, displaced.id);
+  }
   const letter = moving?.letter ?? TILES[id];
   pending.push({ index, id, letter });
   selected = null;
@@ -838,6 +849,18 @@ function placeTile(id, index) {
   playSound('place');
   if (letter === BLANK) openPicker(index);
   render();
+}
+
+// Swaps two tiles' places in the rack's order (which keeps tiles that are out
+// on the board), so a tile coming back from the board shows where the other
+// one left.
+function swapInRack(a, b) {
+  const seat = viewer();
+  const order = [...game.players[seat].rack];
+  const [i, j] = [order.indexOf(a), order.indexOf(b)];
+  [order[i], order[j]] = [order[j], order[i]];
+  arrange(game, seat, order);
+  if (game.phase === 'play') store(GAME_KEY, game);
 }
 
 // Puts tile `id` at `position` among the tiles showing on the rack. Tiles
@@ -912,10 +935,11 @@ function tapRack(id) {
   render();
 }
 
-// A tap on a square: lays the tile picked from the rack, or takes back a tile
-// laid this turn. With nothing picked, a double-tap of a finger zooms the
-// board, and a click of a mouse puts the typing cursor there (a second click
-// turns it to type downwards).
+// A tap on a square: lays the tile picked from the rack (trading places with
+// a tile laid there this turn), or else takes back a tile laid this turn.
+// With nothing picked, a double-tap of a finger zooms the board, and a click
+// of a mouse puts the typing cursor there (a second click turns it to type
+// downwards).
 function tapCell(index, pointerType = 'mouse') {
   const now = performance.now();
   const doubled = pointerType === 'touch' && lastTap.index === index && now - lastTap.time < DOUBLE_TAP_MS;
@@ -926,11 +950,11 @@ function tapCell(index, pointerType = 'mouse') {
   }
   if (!canAct()) return;
   const tile = pending.find(laid => laid.index === index);
-  if (tile) {
+  if (selected !== null && !game.board[index]) {
+    placeTile(selected, index);
+  } else if (tile) {
     if (isBlank(tile.id)) openPicker(index);
     else returnTile(index);
-  } else if (selected !== null && isFree(index)) {
-    placeTile(selected, index);
   } else if (pointerType !== 'touch' && isFree(index)) {
     cursor = { index, across: cursor?.index === index ? !cursor.across : true };
     render();
@@ -965,10 +989,16 @@ function showSquares(squares) {
 // ---- Typing ---------------------------------------------------------------
 
 // Lays a tile for `letter` at the cursor: one of that letter from the rack,
-// or a blank standing for it when there is none (or Shift is held). The
+// or a blank standing for it when there is none (or Shift is held). Typing
+// over a tile laid this turn replaces it, and it goes back to the rack. The
 // cursor then moves on past any tiles already down.
 function typeLetter(letter, wantBlank) {
-  if (!cursor || !canAct() || !isFree(cursor.index)) return;
+  if (!cursor || !canAct() || game.board[cursor.index]) return;
+  const displaced = pending.find(tile => tile.index === cursor.index);
+  if (displaced?.letter === letter && isBlank(displaced.id) === Boolean(wantBlank)) {
+    moveCursorOn(); // the same letter typed again: nothing to change
+    return;
+  }
   const showing = rackTiles(viewer());
   const id = (wantBlank ? undefined : showing.find(tile => TILES[tile] === letter)) ?? showing.find(isBlank);
   if (id === undefined) {
@@ -976,11 +1006,20 @@ function typeLetter(letter, wantBlank) {
     render();
     return;
   }
+  if (displaced) {
+    pending = pending.filter(tile => tile !== displaced);
+    swapInRack(id, displaced.id);
+  }
   pending.push({ index: cursor.index, id, letter });
-  typed.push(cursor.index);
+  if (!typed.includes(cursor.index)) typed.push(cursor.index);
   selected = null;
   notice = '';
   playSound('place');
+  moveCursorOn();
+}
+
+// Moves the cursor past the squares with tiles on them, as far as the edge.
+function moveCursorOn() {
   const step = cursor.across ? 1 : SIZE;
   const atEdge = i => (cursor.across ? col(i) === SIZE - 1 : i + SIZE >= SQUARES);
   let next = cursor.index;
@@ -1079,10 +1118,9 @@ const input = setupInput({
   frame: $('board-frame'),
   handlers: {
     canDrag: from => (from === 'board' ? canAct() : !covered() && !isAi(viewer()) && game.phase === 'play'),
-    canDrop: (target, press) => {
-      if (target.kind === 'rack') return true;
-      return canAct() && (isFree(target.index) || target.index === press.index);
-    },
+    // Any square without a tile from an earlier turn: an empty one, or one
+    // with a tile laid this turn, which trades places with the one dropped.
+    canDrop: target => target.kind === 'rack' || (canAct() && !game.board[target.index]),
     drop: (press, target) => {
       if (!target) return;
       if (target.kind === 'cell') {
