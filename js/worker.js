@@ -1,26 +1,14 @@
 // The computer's thinking, kept off the page's own thread so the page stays
-// smooth while a play is searched for. It loads the word lists, hands the
-// full one to the page so the page need not build its own, and answers the
-// page's questions (see thinker.js).
+// smooth while a play is searched for. Every question from the page (see
+// thinker.js) is answered by answers.js, which also hands the page the word
+// list it plays with, so the page need not build its own.
 
-import { loadDictionary, WORD_LISTS } from './dictionary.js';
-import { think } from './ai.js';
-
-const full = loadDictionary(WORD_LISTS.full);
-let common = null; // loaded the first time an easier level needs it
-
-full.then(
-  dict => postMessage({ type: 'words', dict }),
-  error => postMessage({ type: 'words', error: error.message }),
-);
+import { answer } from './answers.js';
 
 onmessage = async ({ data }) => {
   const { id, request } = data;
   try {
-    const everyday = request.type === 'move' && request.level !== 'hard';
-    if (everyday) common ??= loadDictionary(WORD_LISTS.common);
-    const words = { full: await full, common: everyday ? await common : null };
-    postMessage({ id, result: think(request, words) });
+    postMessage({ id, result: await answer(request) });
   } catch (error) {
     postMessage({ id, error: error.message });
   }

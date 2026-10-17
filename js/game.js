@@ -36,14 +36,17 @@ function refill(game, player) {
   return drawn;
 }
 
-// `players` is a list of { name, ai }. Tests pass a seeded `random`.
-export function newGame({ mode = 'ai', difficulty = 'medium', players }, random = Math.random) {
+// `players` is a list of { name, ai }. `words` is the key of the word list
+// the game is played with (see WORD_LISTS in dictionary.js); a game keeps it
+// to the end. Tests pass a seeded `random`.
+export function newGame({ mode = 'ai', difficulty = 'medium', players, words = 'enable+added' }, random = Math.random) {
   check(players.length >= 2 && players.length <= 4, 'A game needs two to four players');
   const { first, rounds } = drawForFirst(players.length, random);
   const game = {
     v: 1,
     mode,
     difficulty,
+    words,
     players: players.map(({ name, ai = false }) => ({ name, ai, rack: [], score: 0, hints: 0 })),
     board: emptyBoard(),
     bag: newBag(random),

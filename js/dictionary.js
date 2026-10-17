@@ -97,20 +97,40 @@ export function isWord(dict, word) {
   return node > 0 && dict.end[node] === 1;
 }
 
-// The full list decides what is a word. The common list is the vocabulary
-// of the easier computer players.
+// The word lists a game can be played with, each made of files in words/.
+// ENABLE and YAWL are in the public domain and Wordnik's list is under the
+// MIT licence (words/LICENSE-wordnik.txt). added.txt is the game's own short
+// list of newer words that some of them lack, such as OK and ZEN.
 export const WORD_LISTS = {
-  full: ['enable.txt', 'added.txt'],
-  common: ['common.txt'],
+  enable: { name: 'ENABLE', files: ['enable.txt'] },
+  'enable+added': { name: 'ENABLE + added', files: ['enable.txt', 'added.txt'] },
+  yawl: { name: 'YAWL', files: ['yawl.txt'] },
+  'yawl+added': { name: 'YAWL + added', files: ['yawl.txt', 'added.txt'] },
+  wordnik: { name: 'Wordnik', files: ['wordnik.txt'] },
+  'wordnik+added': { name: 'Wordnik + added', files: ['wordnik.txt', 'added.txt'] },
 };
+export const DEFAULT_LIST = 'wordnik+added';
+
+// The everyday vocabulary of the easier computer players, for any list;
+// loadCommon() narrows it to the list in use.
+const COMMON = 'common.txt';
+
+async function fetchText(file) {
+  const response = await fetch(new URL(`../words/${file}`, import.meta.url));
+  if (!response.ok) throw new Error(`Could not load the word list ${file} (${response.status})`);
+  return response.text();
+}
 
 export async function loadDictionary(files) {
-  const texts = await Promise.all(
-    files.map(async file => {
-      const response = await fetch(new URL(`../words/${file}`, import.meta.url));
-      if (!response.ok) throw new Error(`Could not load the word list ${file} (${response.status})`);
-      return response.text();
-    }),
-  );
-  return buildDictionary(...texts);
+  return buildDictionary(...(await Promise.all(files.map(fetchText))));
+}
+
+// One of WORD_LISTS, by its key.
+export const loadWords = key => loadDictionary(WORD_LISTS[key].files);
+
+// The everyday words that `dict` allows, so an easier computer player never
+// plays a word the list in use would refuse.
+export async function loadCommon(dict) {
+  const text = await fetchText(COMMON);
+  return buildDictionary(text.split('\n').filter(word => isWord(dict, word.trim())).join('\n'));
 }

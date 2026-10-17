@@ -4,7 +4,7 @@
 
 import { TILES, VALUES, BLANK, isBlank, shuffle } from './tiles.js';
 import { SIZE, SQUARES, CENTER, PREMIUMS, row, col, squareName } from './board.js';
-import { isWord } from './dictionary.js';
+import { isWord, WORD_LISTS, DEFAULT_LIST } from './dictionary.js';
 import { evaluatePlay } from './rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './game.js';
 import { setupInput } from './input.js';
@@ -16,7 +16,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -70,6 +70,7 @@ function loadSettings() {
   if (Array.isArray(saved?.names)) {
     settings.names = settings.names.map((name, i) => (typeof saved.names[i] === 'string' ? saved.names[i].slice(0, 12) : name));
   }
+  settings.wordList = Object.hasOwn(WORD_LISTS, saved?.wordList ?? '') ? saved.wordList : DEFAULT_LIST;
   return settings;
 }
 
@@ -81,7 +82,8 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const settings = loadSettings();
 const stats = loadStats(load(STATS_KEY));
 let resetArmed = false;
-let dict = null; // the word list, once it has loaded
+let dict = null; // the word list in use, once it has loaded
+let dictKey = null; // which one: the game's list in a game, the menu's on the menu
 let wordsFailed = false;
 let game = null;
 let pending = []; // tiles laid this turn: { index, id, letter }
@@ -118,15 +120,39 @@ let lastTap = { index: -1, time: 0 }; // for telling a double-tap on the board
 
 setMuted(!settings.sound);
 
-// The word list arrives from the worker, which also does the computer's
-// thinking.
-startThinker((loaded, error) => {
-  if (loaded) dict = loaded;
-  else wordsFailed = Boolean(error);
-  document.body.dataset.words = loaded ? 'ready' : 'failed'; // for the test driver
-  if (game) render();
-  if (!$('lookup').hidden) drawLookup();
-});
+// The word lists come from the worker, which also does the computer's
+// thinking and keeps each list once loaded. The page holds the one in use:
+// a game's own list during the game, the menu's choice on the menu.
+startThinker();
+
+function useWords(key) {
+  if (dictKey === key) return;
+  dictKey = key;
+  dict = null;
+  wordsFailed = false;
+  delete document.body.dataset.words; // for the test driver
+  ask({ type: 'words', list: key }).then(
+    loaded => {
+      if (dictKey !== key) return;
+      dict = loaded;
+      document.body.dataset.words = 'ready';
+      wordsArrived();
+    },
+    () => {
+      if (dictKey !== key) return;
+      wordsFailed = true;
+      document.body.dataset.words = 'failed';
+      wordsArrived();
+    },
+  );
+}
+
+function wordsArrived() {
+  if (game && !$('table').hidden) render();
+  if (!$('lookup').hidden) showTab(wordsTab);
+}
+
+useWords(settings.wordList);
 
 const valid = word => isWord(dict, word);
 
@@ -180,15 +206,20 @@ function rackTiles(seat) {
 }
 
 // While a play is counted out, the scores wait at what they were before it.
+// Each chip also shows how many tiles that player holds; once the bag is
+// empty those counts turn gold, as they decide when to go out.
 function drawScores() {
   const scores = counting ? counting.held : game.players.map(player => player.score);
   $('scores').innerHTML = game.players
     .map((player, seat) => {
       const active = game.phase === 'play' && seat === game.turn;
-      return `<div class="chip seat${seat}${active ? ' active' : ''}"><i></i><span class="name">${escapeHtml(player.name)}</span><b>${scores[seat]}</b></div>`;
+      const held = player.rack.length;
+      const tiles = `<span class="held" title="${plural(held, 'tile')} on the rack"><span class="sr-only">holding </span>${held}<span class="sr-only"> ${held === 1 ? 'tile' : 'tiles'}</span></span>`;
+      return `<div class="chip seat${seat}${active ? ' active' : ''}"><i></i><span class="name">${escapeHtml(player.name)}</span><b>${scores[seat]}</b>${tiles}</div>`;
     })
     .join('');
   $('scores').classList.toggle('many', game.players.length > 2);
+  $('scores').classList.toggle('endgame', game.bag.length === 0);
   $('bag-count').textContent = game.bag.length;
 }
 
@@ -283,6 +314,7 @@ function drawButtons(result) {
   $('btn-hint').hidden = !settings.hints;
   $('btn-hint').disabled = !acting;
   $('btn-lookup').hidden = !settings.lookup;
+  $('btn-short').hidden = !settings.lookup;
   $('btn-sound').setAttribute('aria-pressed', settings.sound);
 }
 
@@ -642,7 +674,7 @@ function scheduleAi() {
       }, true);
     }, Math.max(0, AI_DELAY - (performance.now() - asked)));
   };
-  ask({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: game.difficulty }).then(
+  ask({ type: 'move', list: dictKey, board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: game.difficulty }).then(
     answered,
     () => answered({ type: 'pass' }),
   );
@@ -669,7 +701,7 @@ async function onHint() {
   $('btn-all-plays').hidden = true;
   $('hints').hidden = false;
   try {
-    shownHints = await ask({ type: 'hints', board: game.board, rack: game.players[seat].rack });
+    shownHints = await ask({ type: 'hints', list: dictKey, board: game.board, rack: game.players[seat].rack });
   } catch {
     $('hints-text').textContent = 'No hints just now. Try again in a moment.';
     return;
@@ -739,23 +771,50 @@ const focusIfKeyboard = field => {
   if (matchMedia('(pointer: fine)').matches) field.focus();
 };
 
-function openWords() {
+// The Words box, on the tab last used or on `tab`, naming the list in use.
+function openWords(tab = wordsTab) {
+  $('words-list').textContent = `Word list: ${WORD_LISTS[dictKey].name}`;
   $('lookup').hidden = false;
-  showTab(wordsTab);
+  showTab(tab);
 }
 
 function showTab(tab) {
   wordsTab = tab;
   setPressed($('words-tabs'), 'tab', tab);
-  $('tab-check').hidden = tab !== 'check';
-  $('tab-find').hidden = tab !== 'find';
+  for (const name of ['check', 'find', 'short']) $(`tab-${name}`).hidden = tab !== name;
   if (tab === 'check') {
     drawLookup();
     focusIfKeyboard($('lookup-word'));
-  } else {
+  } else if (tab === 'find') {
     findNow();
     focusIfKeyboard($('tab-find').querySelector('[data-find]'));
+  } else {
+    drawShort();
   }
+}
+
+// Every two- and three-letter word in the list in use, for quick reference.
+// Plain words, not links, so a stray tap opens nothing.
+async function drawShort() {
+  const list = dictKey;
+  const sections = [['two', 2, 'Two letters'], ['three', 3, 'Three letters']];
+  for (const [id] of sections) {
+    $(`short-${id}`).textContent = '';
+    $(`short-${id}-title`).textContent = 'Looking…';
+  }
+  let answers;
+  try {
+    answers = await Promise.all(sections.map(([, length]) => ask({ type: 'find', list, filters: { length } })));
+  } catch {
+    $('short-two-title').textContent = 'The word list is not ready. Try again in a moment.';
+    $('short-three-title').textContent = '';
+    return;
+  }
+  if (list !== dictKey) return;
+  sections.forEach(([id, , title], i) => {
+    $(`short-${id}-title`).textContent = `${title} (${answers[i].total.toLocaleString()})`;
+    $(`short-${id}`).innerHTML = answers[i].words.map(word => `<span>${word}</span>`).join('');
+  });
 }
 
 // Asks the worker for the words that fit, a moment after typing stops. An
@@ -772,7 +831,7 @@ async function findNow() {
   $('find-count').textContent = 'Looking…';
   let answer;
   try {
-    answer = await ask({ type: 'find', filters });
+    answer = await ask({ type: 'find', list: dictKey, filters });
   } catch {
     if (asked === findAsked) $('find-count').textContent = 'The word list is not ready. Try again in a moment.';
     return;
@@ -1163,6 +1222,8 @@ function showMenu() {
     field.hidden = i >= settings.players;
     field.value = settings.names[i];
   }
+  $('word-list').value = settings.wordList;
+  useWords(settings.wordList);
 
   const saved = load(GAME_KEY);
   const canResume = saved?.v === 1 && saved.phase === 'play';
@@ -1174,8 +1235,12 @@ function showMenu() {
   $('menu').hidden = false;
 }
 
+// A game is played with the word list it was started with; one saved before
+// there was a choice was played with ENABLE + added.
 function start(saved = null) {
-  game = saved ?? newGame({ mode: settings.mode, difficulty: settings.difficulty, players: playersFor() });
+  game = saved ?? newGame({ mode: settings.mode, difficulty: settings.difficulty, players: playersFor(), words: settings.wordList });
+  if (!Object.hasOwn(WORD_LISTS, game.words ?? '')) game.words = 'enable+added';
+  useWords(game.words);
   stopParty();
   pending = [];
   typed = [];
@@ -1227,8 +1292,8 @@ $('btn-shuffle').addEventListener('click', onShuffle);
 $('btn-exchange').addEventListener('click', openSwap);
 $('btn-pass').addEventListener('click', onPass);
 $('btn-hint').addEventListener('click', onHint);
-$('btn-lookup').addEventListener('click', openWords);
-$('btn-words').addEventListener('click', openWords);
+$('btn-lookup').addEventListener('click', () => openWords());
+$('btn-words').addEventListener('click', () => openWords());
 $('btn-all-plays').addEventListener('click', showAllPlays);
 
 $('hints-sort').addEventListener('click', event => {
@@ -1306,6 +1371,14 @@ $('btn-confirm').addEventListener('click', () => {
 $('btn-stats').addEventListener('click', showStats);
 $('btn-moves').addEventListener('click', showMoves);
 $('btn-zoom').addEventListener('click', () => toggleZoom());
+$('btn-short').addEventListener('click', () => openWords('short'));
+
+for (const [key, { name }] of Object.entries(WORD_LISTS)) $('word-list').add(new Option(name, key));
+$('word-list').addEventListener('change', event => {
+  settings.wordList = event.target.value;
+  store(SETTINGS_KEY, settings);
+  useWords(settings.wordList); // loaded now, ready for the next game
+});
 $('btn-sound').addEventListener('click', toggleSound);
 
 // The first press arms the button, the second erases.

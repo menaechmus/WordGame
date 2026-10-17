@@ -16,7 +16,8 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
 - **Hint** lists the five best plays for your tiles, and **Show all** lists every play, best first or A to Z; tap one to lay it on the board. Hints can be switched off on the menu.
 - **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.
-- **Words** (the magnifier in a game, while word check is on, or the button on the menu) checks whether a word is in the list, with a link to its meaning, and finds words: by how they start or end, letters they contain, a pattern with `?` for any letter (`C?T`), or the letters they are made from in any order, `?` again standing for any letter (`RETAIN?`). The fields combine, and the results scroll, sorted A to Z, longest first or by points.
+- **Words** (the magnifier in a game, while word check is on, or the button on the menu) checks whether a word is in the list, with a link to its meaning, and finds words: by how they start or end, letters they contain, a pattern with `?` for any letter (`C?T`), or the letters they are made from in any order, `?` again standing for any letter (`RETAIN?`). The fields combine, and the results scroll, sorted A to Z, longest first or by points. Its third tab lists every two- and three-letter word, and the **2 & 3 letters** button in a game opens it straight away.
+- The small number on each score is how many tiles that player holds. Once the bag is empty these turn gold: they show who could go out, and how soon.
 - On a phone, **Zoom** (or a double-tap on an empty square) enlarges the board; drag the board to look around it.
 - **Moves**, under the messages, lists every turn of the game so far with each player's running total.
 - **Statistics** on the menu shows your record against each computer level, results between people by name, best plays and games, totals, and the last twenty games.
@@ -27,13 +28,25 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 
 Settings, the game in progress and your statistics are kept in the browser's `localStorage`, so they stay on that device and browser and disappear if its site data is cleared.
 
-## Word list
+## Word lists
 
-A word is valid if it is in `words/enable.txt` or `words/added.txt`.
+**Word list** on the menu chooses which words are valid. Each list is freely licensed, and each can have the game's few added words or not. A game keeps the list it started with; changing the menu affects new games only.
 
-- `words/enable.txt` is the ENABLE word list (public domain), keeping the words of 2 to 15 letters. It came from <https://norvig.com/ngrams/enable1.txt>.
-- `words/added.txt` holds newer words that ENABLE lacks: QI, ZA, KI, OI, FE, OK, EW and some plurals. Add a word there, one per line in lower case, to make it playable.
-- `words/common.txt` is the everyday vocabulary that the Easy and Medium computer players keep to. It is the words of `2of12full.txt` from Alan Beale's 12dicts lists (public domain; Alt12Dicts edition from <https://github.com/en-wl/wordlist>) that are valid here, together with their regular plurals, verb forms and comparisons that are valid too. Thanks to Alan Beale and Kevin Atkinson for the 12dicts lists.
+| Choice | Files | Words |
+|---|---|---|
+| ENABLE | `words/enable.txt` | 168,548 |
+| ENABLE + added | `words/enable.txt`, `words/added.txt` | 168,560 |
+| YAWL | `words/yawl.txt` | 257,150 |
+| YAWL + added | `words/yawl.txt`, `words/added.txt` | 257,155 |
+| Wordnik | `words/wordnik.txt` | 194,152 |
+| **Wordnik + added** (the first choice) | `words/wordnik.txt`, `words/added.txt` | 194,154 |
+
+- **ENABLE** (public domain) is the older, smaller list, from <https://norvig.com/ngrams/enable1.txt>. It lacks words that became official in the last twenty years, such as CIG and QI.
+- **Wordnik** (MIT licence; see `words/LICENSE-wordnik.txt`) comes closest to the official lists, from <https://github.com/wordnik/wordlist> (`wordlist-20210729.txt`).
+- **YAWL** (public domain) is the biggest, with many rare words, from <https://github.com/elasticdog/yawl> (`yawl-0.3.2.03/word.list`).
+- All three keep only words of 2 to 15 letters, the width of the board.
+- `words/added.txt` holds newer words that some lists lack: QI, ZA, KI, OI, FE, OK, EW, ZEN and some plurals. Add a word there, one per line in lower case, to make it playable with the "+ added" lists.
+- `words/common.txt` is the everyday vocabulary that the Easy and Medium computer players keep to. The game narrows it to the list in use, so they never play a word that list refuses. It is the words of `2of12full.txt` from Alan Beale's 12dicts lists (public domain; Alt12Dicts edition from <https://github.com/en-wl/wordlist>) that are in any of the lists, together with their regular plurals, verb forms and comparisons. Thanks to Alan Beale and Kevin Atkinson for the 12dicts lists.
 
 ## Run locally
 
@@ -60,13 +73,13 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `index.html`, `css/style.css` | The page and its styles |
 | `js/tiles.js` | The hundred tiles: letters, counts, values and the bag |
 | `js/board.js` | The board and its premium squares |
-| `js/dictionary.js` | The word list as a compact trie, and word lookups |
+| `js/dictionary.js` | The word lists to choose from, each as a compact trie, and word lookups |
 | `js/rules.js` | Whether a play is legal, and what it scores |
 | `js/game.js` | Turns, racks, exchanges, passes and the end of the game, as a plain game object and the actions that change it |
 | `js/moves.js` | Every legal play for a rack (the Appel–Jacobson method) |
 | `js/ai.js` | The computer's three levels, and hints |
 | `js/finder.js` | The word finder |
-| `js/worker.js`, `js/thinker.js` | The computer's thinking in a background worker, and the page's side of it |
+| `js/worker.js`, `js/thinker.js`, `js/answers.js` | The computer's thinking and the word lists, in a background worker; the page's side of it; and the answers both give |
 | `js/stats.js` | Lifetime statistics |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
 | `js/animate.js` | The count of each play on the board |

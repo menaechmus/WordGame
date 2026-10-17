@@ -16,7 +16,7 @@
 <script type="module">
 import { TILES, VALUES, COUNTS, BLANK, RACK_SIZE, rackValue, newBag, shuffle } from './js/tiles.js';
 import { SIZE, CENTER, PREMIUMS, LETTER_MULT, WORD_MULT, row, col, at, squareName, playName, emptyBoard } from './js/board.js';
-import { buildDictionary, isWord, loadDictionary, WORD_LISTS } from './js/dictionary.js';
+import { buildDictionary, isWord, loadWords, loadCommon, WORD_LISTS, DEFAULT_LIST } from './js/dictionary.js';
 import { evaluatePlay, wordCells, BINGO } from './js/rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './js/game.js';
 import { generateMoves, placementsFor } from './js/moves.js';
@@ -103,8 +103,9 @@ function preset(board, take, word, from, across) {
   return board;
 }
 
-const dict = await loadDictionary(WORD_LISTS.full);
-const common = await loadDictionary(WORD_LISTS.common);
+// Most tests keep to ENABLE + added, so the words they expect stay put.
+const dict = await loadWords('enable+added');
+const common = await loadCommon(dict);
 const valid = word => isWord(dict, word);
 
 // ---- Tiles --------------------------------------------------------------
@@ -172,7 +173,7 @@ test('dictionary: a small list', () => {
 });
 
 test('dictionary: the full list', () => {
-  equal(dict.size, 168559, 'ENABLE 2-15 letters plus the added words');
+  equal(dict.size, 168560, 'ENABLE 2-15 letters plus the added words');
   for (const word of ['QI', 'ZA', 'KI', 'OI', 'FE', 'OK', 'EW', 'QIS', 'ZAS', 'AA', 'XU', 'QUIXOTIC', 'JOURNEY', 'OXYPHENBUTAZONE']) {
     if (!valid(word)) throw new Error(`${word} missing`);
   }
@@ -190,6 +191,49 @@ test('dictionary: common words are everyday words, all of them valid', () => {
     if (isWord(common, word)) throw new Error(`${word} counted as common`);
   }
   notes.push(`common list: ${common.size} words`);
+});
+
+// ---- Word lists ---------------------------------------------------------
+
+const lists = Object.fromEntries(await Promise.all(Object.keys(WORD_LISTS).map(async key => [key, await loadWords(key)])));
+const ADDED = ['EW', 'FE', 'FES', 'KI', 'KIS', 'OI', 'OK', 'QI', 'QIS', 'ZA', 'ZAS', 'ZEN'];
+
+test('word lists: how many words each holds', () => {
+  const sizes = Object.fromEntries(Object.entries(lists).map(([key, list]) => [key, list.size]));
+  equal(sizes, { enable: 168548, 'enable+added': 168560, yawl: 257150, 'yawl+added': 257155, wordnik: 194152, 'wordnik+added': 194154 }, 'words');
+  equal(DEFAULT_LIST, 'wordnik+added', 'the first choice');
+});
+
+test('word lists: each "+ added" list has every added word', () => {
+  for (const key of Object.keys(lists).filter(key => key.endsWith('+added'))) {
+    const missing = ADDED.filter(word => !isWord(lists[key], word));
+    if (missing.length) throw new Error(`${key} lacks ${missing}`);
+  }
+  equal(['wordnik', 'yawl', 'enable'].map(key => ADDED.filter(word => !isWord(lists[key], word)).join(' ')), ['OK ZEN', 'EW KI KIS OK ZEN', ADDED.join(' ')], 'what each lacks without them');
+});
+
+test('word lists: CIG, official since 2005, is in Wordnik and YAWL but not ENABLE', () => {
+  equal(['wordnik', 'yawl', 'enable'].map(key => isWord(lists[key], 'CIG')), [true, true, false], 'CIG');
+});
+
+test('word lists: YAWL holds all but 68 ENABLE words, odd medical plurals', () => {
+  const missing = findWords(lists.enable, {}).words.filter(word => !isWord(lists.yawl, word));
+  equal(missing.length, 68, 'missing');
+  if (!missing.includes('APPENDICITIDES')) throw new Error(`unexpected: ${missing.slice(0, 5)}`);
+});
+
+test('word lists: the two- and three-letter words of each', () => {
+  const short = key => [2, 3].map(length => findWords(lists[key], { length }).total);
+  const counts = Object.fromEntries(Object.keys(lists).map(key => [key, short(key)]));
+  equal(counts, { enable: [96, 972], 'enable+added': [103, 977], yawl: [123, 1255], 'yawl+added': [126, 1257], wordnik: [126, 1344], 'wordnik+added': [127, 1345] }, 'counts');
+});
+
+const wordnikCommon = await loadCommon(lists['wordnik+added']);
+
+test('word lists: the everyday words are narrowed to the list in use', () => {
+  equal([common.size, wordnikCommon.size], [83962, 86108], 'everyday words with ENABLE + added and with Wordnik + added');
+  const outside = findWords(wordnikCommon, {}).words.filter(word => !isWord(lists['wordnik+added'], word));
+  equal(outside, [], 'everyday words the list would refuse');
 });
 
 // ---- Rules: placement ---------------------------------------------------
@@ -568,15 +612,17 @@ test('moves: placementsFor uses blanks only where the play has them', () => {
 const words = { full: dict, common };
 
 // A whole game between computer players, checking after every turn that
-// each tile is in one place and the scores are the sum of the plays.
-function playOut(levels, seed) {
+// each tile is in one place and the scores are the sum of the plays. Every
+// play must pass game.play with the list the game is played with.
+function playOut(levels, seed, lists = words) {
   const random = seeded(seed);
+  const check = word => isWord(lists.full, word);
   const game = newGame({ mode: 'local', players: levels.map(level => ({ name: level, ai: true })) }, random);
   for (let turns = 0; game.phase === 'play'; turns++) {
     if (turns > 400) throw new Error('game did not finish');
     const seat = game.turn;
-    const choice = think({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: levels[seat] }, words, random);
-    if (choice.type === 'play') play(game, seat, choice.tiles, valid);
+    const choice = think({ type: 'move', board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: levels[seat] }, lists, random);
+    if (choice.type === 'play') play(game, seat, choice.tiles, check);
     else if (choice.type === 'exchange') exchange(game, seat, choice.ids, random);
     else pass(game, seat);
     conserved(game);
@@ -594,6 +640,11 @@ for (const [levels, seed] of [[['easy', 'medium'], 11], [['hard', 'easy'], 12], 
     notes.push(`computer: ${game.players.map(p => `${p.name} ${p.score}`).join(', ')} in ${game.moves.length} turns`);
   });
 }
+
+test('computer: easy, medium and hard play a whole game with Wordnik + added, legally', () => {
+  const game = playOut(['easy', 'medium', 'hard'], 14, { full: lists['wordnik+added'], common: wordnikCommon });
+  notes.push(`computer, Wordnik + added: ${game.players.map(p => `${p.name} ${p.score}`).join(', ')} in ${game.moves.length} turns`);
+});
 
 test('computer: with no word to make, it swaps, or passes when the bag is low', () => {
   const take = tileSource();
@@ -712,7 +763,7 @@ test('finder: examples, and the limit', () => {
   equal(find({ pattern: 'c?t' }).filter(w => ['CAT', 'COT', 'CUT'].includes(w)), ['CAT', 'COT', 'CUT'], 'C?T');
   if (!find({ letters: 'retain?' }).includes('RETAINS')) throw new Error('RETAINS missing');
   const some = findWords(dict, {}, 10);
-  equal([some.words.length, some.total], [10, 168559], 'limit');
+  equal([some.words.length, some.total], [10, 168560], 'limit');
 });
 
 // ---- Statistics ---------------------------------------------------------

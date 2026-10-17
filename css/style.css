@@ -289,14 +289,19 @@ svg .line {
 
 /* Short screens: tighten the menu so its last row of buttons stays in view. */
 @media (max-height: 720px) {
-  .menu { gap: 12px; }
-  .options { gap: 6px; }
-  .title-tiles { --t: 38px; }
+  .menu { gap: 10px; }
+  .options { gap: 4px; }
+  .title-tiles { --t: 34px; }
 
   .choice button {
-    min-height: 36px;
-    padding-block: 6px;
+    min-height: 34px;
+    padding-block: 5px;
   }
+
+  .names input { min-height: 38px; }
+  .list-select { min-height: 34px; }
+  .menu-actions { gap: 8px; }
+  .menu-actions .btn { min-height: 44px; }
 }
 
 /* A phone on its side: the settings down the left, the title and the
@@ -361,6 +366,30 @@ svg .line {
 }
 
 .chip.active { border-color: var(--gold); }
+
+/* How many tiles a player holds: a little tile in the chip's corner, gold
+   once the bag is empty and the counts decide when to go out. */
+.chip { position: relative; }
+.chip .name { padding-right: 16px; }
+
+.chip .held {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--tile);
+  box-shadow: inset 0 -1px 0 rgba(90, 60, 20, 0.3);
+  color: var(--tile-ink);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+.scores.endgame .held { background: var(--gold); }
 
 .chip i {
   width: 9px;
@@ -754,12 +783,27 @@ svg .line {
   }
 
   .chip {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     min-height: 40px;
   }
 
-  .chip .name { font-size: 0.9rem; }
-  .chip b { grid-column: auto; }
+  .chip .name {
+    padding-right: 0;
+    font-size: 0.9rem;
+  }
+
+  /* Here the tile count sits in the row, before the score. */
+  .chip .held {
+    position: static;
+    grid-row: 1;
+    grid-column: 3;
+    margin-right: 8px;
+  }
+
+  .chip b {
+    grid-row: 1;
+    grid-column: 4;
+  }
 
   .bag {
     grid-column: -2;
@@ -921,9 +965,44 @@ svg .line {
   justify-self: center;
 }
 
-.choice.tabs {
+.choice.tabs button {
+  flex: 1 1 auto;
+  padding-inline: 10px;
+}
+
+/* Every two- and three-letter word, in narrow columns that scroll. */
+.short-words {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  max-height: 55vh;
+  overflow: auto;
+}
+
+.short-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.2em, 1fr));
+  gap: 2px 6px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.short-words h3 { margin-top: 4px; }
+
+/* The word-list dropdown on the menu, shaped like the choices beside it. */
+.list-select {
+  min-height: 40px;
+  max-width: 62%;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.list-select option {
+  background: #1e3242;
+  color: var(--ink);
 }
 
 .choice.sort {

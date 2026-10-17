@@ -51,6 +51,10 @@
       <input data-name="3" maxlength="12" placeholder="Player 4" aria-label="Player 4 name" autocomplete="off" spellcheck="false">
     </div>
     <div class="option">
+      <label for="word-list">Word list</label>
+      <select id="word-list" class="list-select"></select>
+    </div>
+    <div class="option">
       <span>Hints</span>
       <div class="choice" data-setting="hints">
         <button data-value="true">On</button>
@@ -121,6 +125,7 @@
     </div>
     <div class="status-buttons">
       <button id="btn-moves" class="pill" hidden>Moves</button>
+      <button id="btn-short" class="pill">2 &amp; 3 letters</button>
       <button id="btn-zoom" class="pill zoom" aria-pressed="false">Zoom</button>
     </div>
   </div>
@@ -200,9 +205,11 @@
 <div id="lookup" class="overlay" hidden>
   <div class="dialog wide words">
     <h2>Words</h2>
+    <p id="words-list" class="muted"></p>
     <div id="words-tabs" class="choice tabs">
-      <button data-tab="check" aria-pressed="true">Check a word</button>
-      <button data-tab="find" aria-pressed="false">Find words</button>
+      <button data-tab="check" aria-pressed="true">Check</button>
+      <button data-tab="find" aria-pressed="false">Find</button>
+      <button data-tab="short" aria-pressed="false">2 &amp; 3 letters</button>
     </div>
     <section id="tab-check" class="stack">
       <input id="lookup-word" class="lookup-word" maxlength="15" placeholder="Type a word" aria-label="Word to check" autocomplete="off" autocapitalize="characters" spellcheck="false">
@@ -228,6 +235,12 @@
         </div>
       </div>
       <ol id="find-list" class="find-list"></ol>
+    </section>
+    <section id="tab-short" class="short-words" hidden>
+      <h3 id="short-two-title"></h3>
+      <div id="short-two" class="short-list"></div>
+      <h3 id="short-three-title"></h3>
+      <div id="short-three" class="short-list"></div>
     </section>
     <button class="btn" data-close>Close</button>
   </div>
@@ -279,7 +292,7 @@
       <li><b>Or not.</b> Instead of playing you can swap tiles for new ones (while the bag still holds seven) or pass.</li>
       <li><b>The end.</b> When the bag is empty and someone uses their last tile, the game ends: everyone loses the value of the tiles they still hold, and the player who went out gains it all. Three rounds in a row without a score also end the game.</li>
     </ol>
-    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back, or lay another on top of it to swap them. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and every other play on request. The magnifier (and Words on the menu) checks a word or finds words by their start, end, letters or pattern. On a phone, Zoom (or a double-tap on an empty square) enlarges the board.</p>
+    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back, or lay another on top of it to swap them. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and every other play on request. The magnifier (and Words on the menu) checks a word, finds words by their start, end, letters or pattern, and lists every two- and three-letter word; "2 &amp; 3 letters" opens that list straight away. Choose the word list on the menu: Wordnik + added, the first choice, comes closest to the official lists; ENABLE is older and smaller; YAWL is the biggest, with many rare words. The small number on each score is how many tiles that player holds. On a phone, Zoom (or a double-tap on an empty square) enlarges the board.</p>
     <p class="muted">With a keyboard: click a square and type the word. Click the square again to type downwards. Shift and a letter lays a blank as that letter. Backspace takes back the last letter, Enter plays and Escape takes your tiles back.</p>
     <button class="btn primary" data-close>Got it</button>
   </div>
