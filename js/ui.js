@@ -16,7 +16,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.4.0';
+const VERSION = '1.4.1';
 const RELEASED = '17 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move

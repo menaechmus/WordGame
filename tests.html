@@ -678,8 +678,8 @@ test('computer: each level keeps to its words, its lengths and its share of the 
     const easy = chooseMove([...moves], rack, 50, 'easy', random);
     const medium = chooseMove([...moves], rack, 50, 'medium', random);
     const hard = chooseMove([...moves], rack, 50, 'hard', random);
-    if (easy.word.length > 5) throw new Error(`easy played ${easy.word}`);
-    if (medium.word.length > 7) throw new Error(`medium played ${medium.word}`);
+    if (easy.word.length > 4) throw new Error(`easy played ${easy.word}`);
+    if (medium.word.length > 6) throw new Error(`medium played ${medium.word}`);
     if (hard.score < scores[5]) throw new Error(`hard played ${hard.word} ${hard.score}, below its six best`);
   }
   equal([FULL_LEVELS.has('easy'), FULL_LEVELS.has('medium'), FULL_LEVELS.has('hard'), FULL_LEVELS.has('guru')], [false, false, true, true], 'who knows every word');

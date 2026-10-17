@@ -99,23 +99,24 @@ function hard(moves, letters, bag, random) {
 }
 
 // Medium and Easy keep to words no longer than `len` when they can, and pick
-// at random between two points in those plays ranked by score: `from` 0.75
-// and `to` 1 mean somewhere in the top quarter.
+// at random between two points in those plays ranked by score: `from` 0.4
+// and `to` 0.85 mean better than most but seldom the best.
 function between(moves, random, len, from, to) {
   const short = moves.filter(move => move.word.length <= len);
   const pool = (short.length ? short : moves).sort((a, b) => a.score - b.score);
   return pool[Math.min(pool.length - 1, Math.floor(pool.length * (from + random() * (to - from))))];
 }
 
-const medium = (moves, letters, bag, random) => between(moves, random, MEDIUM_LEN, MEDIUM_FROM, 1);
+const medium = (moves, letters, bag, random) => between(moves, random, MEDIUM_LEN, MEDIUM_FROM, MEDIUM_TO);
 const easy = (moves, letters, bag, random) => between(moves, random, EASY_LEN, EASY_FROM, EASY_TO);
 
 const HARD_TOP = 6;
-const MEDIUM_LEN = 7;
-const MEDIUM_FROM = 0.7;
-const EASY_LEN = 5;
-const EASY_FROM = 0.35;
-const EASY_TO = 0.75;
+const MEDIUM_LEN = 6;
+const MEDIUM_FROM = 0.4;
+const MEDIUM_TO = 0.85;
+const EASY_LEN = 4;
+const EASY_FROM = 0.05;
+const EASY_TO = 0.4;
 
 const LEVELS = { easy, medium, hard, guru };
 
