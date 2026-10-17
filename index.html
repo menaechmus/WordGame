@@ -78,6 +78,9 @@
     <button id="btn-new" class="btn primary">New game</button>
     <div class="row">
       <button id="btn-stats" class="btn">Statistics</button>
+      <button id="btn-words" class="btn">Words</button>
+    </div>
+    <div class="row">
       <button id="btn-rules" class="btn">How to play</button>
       <button id="btn-about" class="icon-btn" aria-label="About">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -182,19 +185,50 @@
 
 <div id="hints" class="overlay" hidden>
   <div class="dialog">
-    <h2>Best plays</h2>
+    <h2 id="hints-title">Best plays</h2>
     <p id="hints-text" class="muted"></p>
+    <div id="hints-sort" class="choice sort" hidden>
+      <button data-sort="score" aria-pressed="true">Best first</button>
+      <button data-sort="az" aria-pressed="false">A–Z</button>
+    </div>
     <ol id="hints-list" class="hint-list"></ol>
+    <button id="btn-all-plays" class="btn" hidden></button>
     <button class="btn" data-close>Close</button>
   </div>
 </div>
 
 <div id="lookup" class="overlay" hidden>
-  <div class="dialog">
-    <h2>Look up a word</h2>
-    <input id="lookup-word" class="lookup-word" maxlength="15" placeholder="Type a word" aria-label="Word to look up" autocomplete="off" autocapitalize="characters" spellcheck="false">
-    <p id="lookup-result" class="lookup-result" aria-live="polite"></p>
-    <a id="lookup-link" target="_blank" rel="noopener" hidden>What does it mean?</a>
+  <div class="dialog wide words">
+    <h2>Words</h2>
+    <div id="words-tabs" class="choice tabs">
+      <button data-tab="check" aria-pressed="true">Check a word</button>
+      <button data-tab="find" aria-pressed="false">Find words</button>
+    </div>
+    <section id="tab-check" class="stack">
+      <input id="lookup-word" class="lookup-word" maxlength="15" placeholder="Type a word" aria-label="Word to check" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <p id="lookup-result" class="lookup-result" aria-live="polite"></p>
+      <a id="lookup-link" target="_blank" rel="noopener" hidden>What does it mean?</a>
+    </section>
+    <section id="tab-find" class="stack" hidden>
+      <div class="find-fields">
+        <label>Starts with<input data-find="starts" maxlength="15" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label>Ends with<input data-find="ends" maxlength="15" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label>Contains<input data-find="contains" maxlength="15" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label>Length<select data-find="length"><option value="0">Any</option></select></label>
+        <label>Pattern<input data-find="pattern" maxlength="15" placeholder="C?T" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+        <label>Letters<input data-find="letters" maxlength="15" placeholder="RETAIN?" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
+      </div>
+      <p class="muted find-help">? stands for any letter. A pattern puts letters in their places (C?T is CAT, COT, CUT); letters make words in any order, each used once (RETAIN? finds RETAINS).</p>
+      <div class="find-head">
+        <span id="find-count" aria-live="polite"></span>
+        <div id="find-sort" class="choice sort">
+          <button data-sort="az" aria-pressed="true">A–Z</button>
+          <button data-sort="long" aria-pressed="false">Longest</button>
+          <button data-sort="points" aria-pressed="false">Points</button>
+        </div>
+      </div>
+      <ol id="find-list" class="find-list"></ol>
+    </section>
     <button class="btn" data-close>Close</button>
   </div>
 </div>
@@ -245,7 +279,7 @@
       <li><b>Or not.</b> Instead of playing you can swap tiles for new ones (while the bag still holds seven) or pass.</li>
       <li><b>The end.</b> When the bag is empty and someone uses their last tile, the game ends: everyone loses the value of the tiles they still hold, and the player who went out gains it all. Three rounds in a row without a score also end the game.</li>
     </ol>
-    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and the magnifier checks whether a word is in the list. On a phone, Zoom (or a double-tap on an empty square) enlarges the board.</p>
+    <p class="muted">Tap a tile, then a square, or drag it there. Tap a tile you have laid to take it back. Drag tiles along the rack to arrange them. Hint shows the best plays for your tiles, and every other play on request. The magnifier (and Words on the menu) checks a word or finds words by their start, end, letters or pattern. On a phone, Zoom (or a double-tap on an empty square) enlarges the board.</p>
     <p class="muted">With a keyboard: click a square and type the word. Click the square again to type downwards. Shift and a letter lays a blank as that letter. Backspace takes back the last letter, Enter plays and Escape takes your tiles back.</p>
     <button class="btn primary" data-close>Got it</button>
   </div>

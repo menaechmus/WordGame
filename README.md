@@ -14,8 +14,9 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
 - Against the computer, Easy and Medium keep to everyday words; Hard knows every word in the list and thinks about the tiles it keeps.
 - Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
-- **Hint** lists the five best plays for your tiles; tap one to lay it on the board. Hints can be switched off on the menu.
-- **Word check** on the menu marks words that are not in the list as you lay them, and shows the magnifier, which looks up whether a word is in the list (with a link to its meaning). With word check off, a word is only checked when you press Play.
+- **Hint** lists the five best plays for your tiles, and **Show all** lists every play, best first or A to Z; tap one to lay it on the board. Hints can be switched off on the menu.
+- **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.
+- **Words** (the magnifier in a game, while word check is on, or the button on the menu) checks whether a word is in the list, with a link to its meaning, and finds words: by how they start or end, letters they contain, a pattern with `?` for any letter (`C?T`), or the letters they are made from in any order, `?` again standing for any letter (`RETAIN?`). The fields combine, and the results scroll, sorted A to Z, longest first or by points.
 - On a phone, **Zoom** (or a double-tap on an empty square) enlarges the board; drag the board to look around it.
 - **Moves**, under the messages, lists every turn of the game so far with each player's running total.
 - **Statistics** on the menu shows your record against each computer level, results between people by name, best plays and games, totals, and the last twenty games.
@@ -64,6 +65,7 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/game.js` | Turns, racks, exchanges, passes and the end of the game, as a plain game object and the actions that change it |
 | `js/moves.js` | Every legal play for a rack (the Appel–Jacobson method) |
 | `js/ai.js` | The computer's three levels, and hints |
+| `js/finder.js` | The word finder |
 | `js/worker.js`, `js/thinker.js` | The computer's thinking in a background worker, and the page's side of it |
 | `js/stats.js` | Lifetime statistics |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
@@ -73,4 +75,4 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/celebrate.js` | Fireworks and confetti for a won game |
 | `js/ui.js` | Drawing, the menu and dialogs, turns, zoom, typing and storage |
 | `words/` | The word lists |
-| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, statistics, the celebration and sound |
+| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, hints, the word finder, statistics, the celebration and sound |

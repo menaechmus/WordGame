@@ -4,6 +4,7 @@
 
 import { TILES, BLANK, VALUES, RACK_SIZE } from './tiles.js';
 import { generateMoves, placementsFor } from './moves.js';
+import { findWords } from './finder.js';
 
 // Roughly what a tile kept on the rack is worth towards the next turn, in
 // points: a blank or an S makes a good play next time likelier, a Q or a V
@@ -121,25 +122,29 @@ export function chooseMove(moves, rack, bag, level, random = Math.random) {
   return { type: 'play', tiles: placementsFor(choice, rack), word: choice.word, score: choice.score };
 }
 
-// The best-scoring plays, one placing of each word, for the Hint button.
-export function topHints(moves, rack, count = 5) {
+// Every playable word, each at its best-scoring place, best first (and A to
+// Z among equals), for the Hint button.
+export function rankPlays(moves, rack) {
   const byWord = new Map();
   for (const move of moves) {
     const known = byWord.get(move.word);
     if (!known || move.score > known.score) byWord.set(move.word, move);
   }
   return [...byWord.values()]
-    .sort((a, b) => b.score - a.score)
-    .slice(0, count)
+    .sort((a, b) => b.score - a.score || (a.word < b.word ? -1 : 1))
     .map(move => ({ word: move.word, name: move.name, score: move.score, tiles: placementsFor(move, rack) }));
 }
 
+export const topHints = (moves, rack, count = 5) => rankPlays(moves, rack).slice(0, count);
+
 // Answers one request from the page, given the word lists: { full, common }.
-// Easy and Medium only know everyday words; Hard and hints know them all.
-// request: { type: 'move', board, rack, bag, level } or { type: 'hints', board, rack }.
+// Easy and Medium only know everyday words; Hard, hints and the word finder
+// know them all. request: { type: 'move', board, rack, bag, level },
+// { type: 'hints', board, rack } or { type: 'find', filters }.
 export function think(request, words, random = Math.random) {
   const { type, board, rack, bag, level } = request;
-  if (type === 'hints') return topHints(generateMoves(words.full, board, rack), rack);
+  if (type === 'hints') return rankPlays(generateMoves(words.full, board, rack), rack);
+  if (type === 'find') return findWords(words.full, request.filters);
   const dict = level === 'hard' ? words.full : words.common;
   return chooseMove(generateMoves(dict, board, rack), rack, bag, level, random);
 }

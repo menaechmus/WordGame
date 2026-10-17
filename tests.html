@@ -20,7 +20,8 @@ import { buildDictionary, isWord, loadDictionary, WORD_LISTS } from './js/dictio
 import { evaluatePlay, wordCells, BINGO } from './js/rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './js/game.js';
 import { generateMoves, placementsFor } from './js/moves.js';
-import { chooseMove, topHints, leaveValue, think } from './js/ai.js';
+import { chooseMove, topHints, rankPlays, leaveValue, think } from './js/ai.js';
+import { findWords } from './js/finder.js';
 import { SOUNDS, renderSound } from './js/sound.js';
 import { emptyStats, loadStats, recordGame, RECENT } from './js/stats.js';
 import { createShow, advance, isOver } from './js/celebrate.js';
@@ -628,6 +629,90 @@ test('hints: the five best plays, one placing of each word, best first', () => {
     if (!result.ok || result.score !== hint.score) throw new Error(`${hint.word}: ${result.error}`);
   }
   notes.push(`hints for RETAINS: ${hints.map(h => `${h.word} ${h.name} ${h.score}`).join(', ')}`);
+});
+
+test('hints: every playable word once, at its best place, best first', () => {
+  const take = tileSource();
+  const rack = [...'RETAINS'].map(take);
+  const board = busyBoard();
+  const moves = generateMoves(dict, board, rack);
+  const plays = rankPlays(moves, rack);
+  equal(new Set(plays.map(p => p.word)).size, plays.length, 'one entry per word');
+  equal(plays.length, new Set(moves.map(m => m.word)).size, 'every word');
+  for (let i = 1; i < plays.length; i++) {
+    const [a, b] = [plays[i - 1], plays[i]];
+    if (a.score < b.score || (a.score === b.score && a.word > b.word)) throw new Error(`${a.word} ${a.score} before ${b.word} ${b.score}`);
+  }
+  equal(plays.slice(0, 5), topHints(moves, rack), 'the first five are the hints');
+  const best = new Map();
+  for (const move of moves) best.set(move.word, Math.max(best.get(move.word) ?? 0, move.score));
+  for (const play of plays) {
+    const result = evaluatePlay(board, play.tiles, valid);
+    if (!result.ok || result.score !== play.score || play.score !== best.get(play.word)) throw new Error(`${play.word}: ${result.error || 'not its best place'}`);
+  }
+  notes.push(`hints: ${plays.length} playable words for RETAINS on the busy board`);
+});
+
+// ---- Word finder --------------------------------------------------------
+
+const wordList = (await Promise.all(['words/enable.txt', 'words/added.txt'].map(file => fetch(file).then(r => r.text()))))
+  .flatMap(text => text.split('\n'))
+  .map(line => line.trim().toUpperCase())
+  .filter(word => /^[A-Z]{2,15}$/.test(word))
+  .sort();
+
+// The same questions answered the slow way, word by word through the list.
+function fits(word, { starts = '', ends = '', contains = '', pattern = '', letters = '', length = 0 }) {
+  const clean = (text, keep) => text.toUpperCase().replace(keep, '');
+  [starts, ends, contains] = [starts, ends, contains].map(text => clean(text, /[^A-Z]/g));
+  [pattern, letters] = [pattern, letters].map(text => clean(text, /[^A-Z?]/g));
+  if (!word.startsWith(starts) || !word.endsWith(ends) || !word.includes(contains)) return false;
+  if (length && word.length !== length) return false;
+  if (pattern && (word.length !== pattern.length || [...pattern].some((ch, i) => ch !== '?' && ch !== word[i]))) return false;
+  if (letters) {
+    const pool = [...letters];
+    for (const ch of word) {
+      let i = pool.indexOf(ch);
+      if (i < 0) i = pool.indexOf('?');
+      if (i < 0) return false;
+      pool.splice(i, 1);
+    }
+  }
+  return true;
+}
+
+const searches = [
+  { starts: 'qu', ends: 'z' },
+  { pattern: 'c?t' },
+  { letters: 'retain?' },
+  { contains: 'zz' },
+  { length: 15 },
+  { letters: '??' },
+  { starts: 'x', length: 3 },
+  { pattern: '?a?e', letters: 'bakers' },
+  { ends: 'ing', contains: 'qu', length: 8 },
+  { starts: 'q-u!' },
+  { pattern: 'c?t', length: 4 },
+  { letters: 'ab', length: 5 },
+  {},
+];
+
+for (const filters of searches) {
+  test(`finder: ${JSON.stringify(filters)} matches a search of the whole list`, () => {
+    const expected = wordList.filter(word => fits(word, filters));
+    const { words, total } = findWords(dict, filters);
+    equal(total, expected.length, 'how many');
+    equal(words.length === expected.length && words.every((word, i) => word === expected[i]), true, `the words (first: ${words.slice(0, 5)} vs ${expected.slice(0, 5)})`);
+  });
+}
+
+test('finder: examples, and the limit', () => {
+  const find = filters => findWords(dict, filters).words;
+  if (!find({ starts: 'qu', ends: 'z' }).includes('QUIZ')) throw new Error('QUIZ missing');
+  equal(find({ pattern: 'c?t' }).filter(w => ['CAT', 'COT', 'CUT'].includes(w)), ['CAT', 'COT', 'CUT'], 'C?T');
+  if (!find({ letters: 'retain?' }).includes('RETAINS')) throw new Error('RETAINS missing');
+  const some = findWords(dict, {}, 10);
+  equal([some.words.length, some.total], [10, 168559], 'limit');
 });
 
 // ---- Statistics ---------------------------------------------------------

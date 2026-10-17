@@ -16,7 +16,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const RELEASED = '16 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -28,6 +28,10 @@ const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const LABELS = { TW: '3W', DW: '2W', TL: '3L', DL: '2L' };
 const PREMIUM_NAMES = { TW: 'triple word', DW: 'double word', TL: 'triple letter', DL: 'double letter' };
 const DOUBLE_TAP_MS = 320;
+const HINTS_BEST = 5; // plays in the hints box until all are asked for
+const HINTS_PAGE = 100; // then drawn this many at a time
+const FIND_PAGE = 200; // words found, drawn this many at a time
+const FIND_DELAY = 150; // the finder waits this long after typing stops
 
 const $ = id => document.getElementById(id);
 
@@ -58,7 +62,7 @@ function parseValue(text) {
 function loadSettings() {
   const settings = { mode: 'ai', difficulty: 'medium', players: 2, names: ['', '', '', ''], hints: true, lookup: true, sound: true };
   const saved = load(SETTINGS_KEY);
-  for (const group of document.querySelectorAll('.choice')) {
+  for (const group of document.querySelectorAll('.choice[data-setting]')) {
     const key = group.dataset.setting;
     const offered = [...group.children].map(button => parseValue(button.dataset.value));
     if (offered.includes(saved?.[key])) settings[key] = saved[key];
@@ -92,7 +96,17 @@ let resultsShown = true; // the game-over box, until put aside to look at the bo
 let aiTimer = 0;
 let thinking = 0; // the computer's question in flight; 0 when there is none
 let questions = 0;
-let shownHints = []; // the plays listed in the hints box
+let shownHints = []; // every play for the rack, best first, from the worker
+let listedHints = []; // the plays in the hints box now, in its order
+let hintsAll = false; // every play listed, rather than the best five
+let hintsSort = 'score';
+let hintsDrawn = 0; // how much of the whole list is drawn so far
+let wordsTab = 'check'; // the Words box's tab, kept between openings
+let found = { words: [], sorted: [], total: 0 }; // the word finder's answer
+let findSort = 'az';
+let findDrawn = 0;
+let findAsked = 0; // the finder's latest question
+let findTimer = 0;
 let counting = null; // while a play is counted out: { held, text, run }
 let skipClick = false; // the tap that skipped a count should do nothing else
 let drawn = new Set(); // tiles just drawn onto the rack, to slide in
@@ -639,13 +653,20 @@ function stopAi() {
   thinking = 0;
 }
 
-// Hints: the best plays for the rack, from the worker. Asking counts as
-// using a hint, once the answer is shown.
+// Hints: every play for the rack, best first, from the worker. The box shows
+// the best five, and the rest on request. Asking counts as using a hint,
+// once the answer is shown.
 async function onHint() {
   if (!canAct() || !settings.hints) return;
   const [asked, seat] = [game, game.turn];
+  hintsAll = false;
+  setPressed($('hints-sort'), 'sort', (hintsSort = 'score'));
+  $('hints-title').textContent = 'Best plays';
   $('hints-text').textContent = 'Looking for plays…';
   $('hints-list').innerHTML = '';
+  $('hints-list').classList.remove('all');
+  $('hints-sort').hidden = true;
+  $('btn-all-plays').hidden = true;
   $('hints').hidden = false;
   try {
     shownHints = await ask({ type: 'hints', board: game.board, rack: game.players[seat].rack });
@@ -661,13 +682,42 @@ async function onHint() {
     return;
   }
   $('hints-text').textContent = 'Tap one to lay it on the board.';
-  $('hints-list').innerHTML = shownHints
-    .map((hint, i) => `<li><button class="hint" data-hint="${i}"><b>${hint.word}</b><span>${hint.name}</span><span>${hint.score}</span></button></li>`)
-    .join('');
+  drawHints();
+}
+
+const hintHtml = (hint, i) =>
+  `<li><button class="hint" data-hint="${i}"><b>${hint.word}</b><span>${hint.name}</span><span>${hint.score}</span></button></li>`;
+
+// The best five; or, once asked for, every play, a hundred at a time
+// (`more` adds the next hundred).
+function drawHints(more = false) {
+  if (!hintsAll) {
+    listedHints = shownHints.slice(0, HINTS_BEST);
+    $('hints-list').innerHTML = listedHints.map(hintHtml).join('');
+    $('btn-all-plays').hidden = shownHints.length <= HINTS_BEST;
+    $('btn-all-plays').textContent = `Show all ${shownHints.length} plays`;
+    return;
+  }
+  listedHints = hintsSort === 'az' ? [...shownHints].sort((a, b) => (a.word < b.word ? -1 : a.word > b.word ? 1 : 0)) : shownHints;
+  hintsDrawn = more ? hintsDrawn + HINTS_PAGE : HINTS_PAGE;
+  const rest = listedHints.length - hintsDrawn;
+  $('hints-list').innerHTML =
+    listedHints.slice(0, hintsDrawn).map(hintHtml).join('') +
+    (rest > 0 ? `<li class="more"><button class="pill" data-more>Show ${Math.min(rest, HINTS_PAGE)} more</button></li>` : '');
+  if (!more) $('hints-list').scrollTop = 0;
+}
+
+function showAllPlays() {
+  hintsAll = true;
+  $('hints-title').textContent = `All ${shownHints.length} plays`;
+  $('btn-all-plays').hidden = true;
+  $('hints-sort').hidden = false;
+  $('hints-list').classList.add('all');
+  drawHints();
 }
 
 function useHint(i) {
-  const hint = shownHints[i];
+  const hint = listedHints[i];
   $('hints').hidden = true;
   if (!hint || !canAct()) return;
   pending = hint.tiles.map(tile => ({ ...tile }));
@@ -676,11 +726,87 @@ function useHint(i) {
   render();
 }
 
-function openLookup() {
-  $('lookup-word').value = '';
-  drawLookup();
+// One button pressed in a row of choices, by its data-<key> value.
+function setPressed(group, key, value) {
+  for (const button of group.children) button.setAttribute('aria-pressed', button.dataset[key] === value);
+}
+
+// ---- Words: check one, or find them ----------------------------------------
+
+// A text box gets the keyboard only where there is a real keyboard; on a
+// phone the screen keyboard would cover the box it was opened for.
+const focusIfKeyboard = field => {
+  if (matchMedia('(pointer: fine)').matches) field.focus();
+};
+
+function openWords() {
   $('lookup').hidden = false;
-  $('lookup-word').focus();
+  showTab(wordsTab);
+}
+
+function showTab(tab) {
+  wordsTab = tab;
+  setPressed($('words-tabs'), 'tab', tab);
+  $('tab-check').hidden = tab !== 'check';
+  $('tab-find').hidden = tab !== 'find';
+  if (tab === 'check') {
+    drawLookup();
+    focusIfKeyboard($('lookup-word'));
+  } else {
+    findNow();
+    focusIfKeyboard($('tab-find').querySelector('[data-find]'));
+  }
+}
+
+// Asks the worker for the words that fit, a moment after typing stops. An
+// answer to an older question is dropped.
+function findSoon() {
+  clearTimeout(findTimer);
+  findTimer = setTimeout(findNow, FIND_DELAY);
+}
+
+async function findNow() {
+  clearTimeout(findTimer);
+  const filters = Object.fromEntries([...document.querySelectorAll('[data-find]')].map(field => [field.dataset.find, field.value]));
+  const asked = ++findAsked;
+  $('find-count').textContent = 'Looking…';
+  let answer;
+  try {
+    answer = await ask({ type: 'find', filters });
+  } catch {
+    if (asked === findAsked) $('find-count').textContent = 'The word list is not ready. Try again in a moment.';
+    return;
+  }
+  if (asked !== findAsked) return;
+  found = answer;
+  sortFound();
+  drawFound();
+}
+
+const wordPoints = word => [...word].reduce((sum, letter) => sum + VALUES[letter], 0);
+
+function sortFound() {
+  const { words } = found;
+  if (findSort === 'long') found.sorted = [...words].sort((a, b) => b.length - a.length || (a < b ? -1 : 1));
+  else if (findSort === 'points') {
+    const points = new Map(words.map(word => [word, wordPoints(word)]));
+    found.sorted = [...words].sort((a, b) => points.get(b) - points.get(a) || (a < b ? -1 : 1));
+  } else found.sorted = words;
+}
+
+// The words found, two hundred at a time (`more` adds the next two hundred),
+// each a link to its meaning, with what its letters are worth.
+function drawFound(more = false) {
+  const { sorted, total } = found;
+  $('find-count').textContent = total ? `${total.toLocaleString()} word${total === 1 ? '' : 's'}` : 'No words fit.';
+  findDrawn = more ? findDrawn + FIND_PAGE : FIND_PAGE;
+  const rest = sorted.length - findDrawn;
+  $('find-list').innerHTML =
+    sorted
+      .slice(0, findDrawn)
+      .map(word => `<li><a href="https://en.wiktionary.org/wiki/${word.toLowerCase()}" target="_blank" rel="noopener">${word}</a><small>${wordPoints(word)}</small></li>`)
+      .join('') + (rest > 0 ? `<li class="more"><button class="pill" data-more>Show ${Math.min(rest, FIND_PAGE)} more</button></li>` : '');
+  if (!more) $('find-list').scrollTop = 0;
 }
 
 function drawLookup() {
@@ -985,7 +1111,7 @@ function showMenu() {
   stopParty();
   counting = null;
   cursor = null;
-  for (const group of document.querySelectorAll('.choice')) {
+  for (const group of document.querySelectorAll('.choice[data-setting]')) {
     for (const button of group.children) {
       button.setAttribute('aria-pressed', parseValue(button.dataset.value) === settings[group.dataset.setting]);
     }
@@ -1063,10 +1189,46 @@ $('btn-shuffle').addEventListener('click', onShuffle);
 $('btn-exchange').addEventListener('click', openSwap);
 $('btn-pass').addEventListener('click', onPass);
 $('btn-hint').addEventListener('click', onHint);
-$('btn-lookup').addEventListener('click', openLookup);
+$('btn-lookup').addEventListener('click', openWords);
+$('btn-words').addEventListener('click', openWords);
+$('btn-all-plays').addEventListener('click', showAllPlays);
+
+$('hints-sort').addEventListener('click', event => {
+  const button = event.target.closest('[data-sort]');
+  if (!button) return;
+  setPressed($('hints-sort'), 'sort', (hintsSort = button.dataset.sort));
+  drawHints();
+});
+
+$('words-tabs').addEventListener('click', event => {
+  const button = event.target.closest('[data-tab]');
+  if (button) showTab(button.dataset.tab);
+});
+
+for (let length = 2; length <= 15; length++) $('tab-find').querySelector('select').add(new Option(`${length} letters`, length));
+for (const field of document.querySelectorAll('[data-find]')) {
+  field.addEventListener('input', findSoon);
+  field.addEventListener('change', findSoon);
+}
+
+$('find-sort').addEventListener('click', event => {
+  const button = event.target.closest('[data-sort]');
+  if (!button) return;
+  setPressed($('find-sort'), 'sort', (findSort = button.dataset.sort));
+  sortFound();
+  drawFound();
+});
+
+$('find-list').addEventListener('click', event => {
+  if (event.target.closest('[data-more]')) drawFound(true);
+});
 $('btn-reveal').addEventListener('click', reveal);
 
 $('hints-list').addEventListener('click', event => {
+  if (event.target.closest('[data-more]')) {
+    drawHints(true);
+    return;
+  }
   const button = event.target.closest('[data-hint]');
   if (button) useHint(Number(button.dataset.hint));
 });
