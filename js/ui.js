@@ -16,8 +16,8 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.3.0';
-const RELEASED = '16 October 2026';
+const VERSION = '1.4.0';
+const RELEASED = '17 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
 const CHEER_MS = 3500; // fireworks and confetti before the game-over box appears
@@ -1226,7 +1226,7 @@ function showMenu() {
   useWords(settings.wordList);
 
   const saved = load(GAME_KEY);
-  const canResume = saved?.v === 1 && saved.phase === 'play';
+  const canResume = (saved?.v === 1 || saved?.v === 2) && saved.phase === 'play';
   $('btn-resume').hidden = !canResume;
   if (canResume) $('btn-resume').textContent = `Resume game (${saved.players.map(player => player.score).join('–')})`;
   $('btn-new').classList.toggle('primary', !canResume);
@@ -1236,10 +1236,12 @@ function showMenu() {
 }
 
 // A game is played with the word list it was started with; one saved before
-// there was a choice was played with ENABLE + added.
+// there was a choice was played with ENABLE + added. A game against Hard
+// saved before 1.4.0 carries on against the same player, now called Guru.
 function start(saved = null) {
   game = saved ?? newGame({ mode: settings.mode, difficulty: settings.difficulty, players: playersFor(), words: settings.wordList });
   if (!Object.hasOwn(WORD_LISTS, game.words ?? '')) game.words = 'enable+added';
+  if (game.v === 1) Object.assign(game, { v: 2, difficulty: game.difficulty === 'hard' ? 'guru' : game.difficulty });
   useWords(game.words);
   stopParty();
   pending = [];

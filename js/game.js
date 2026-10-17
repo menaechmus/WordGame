@@ -38,12 +38,13 @@ function refill(game, player) {
 
 // `players` is a list of { name, ai }. `words` is the key of the word list
 // the game is played with (see WORD_LISTS in dictionary.js); a game keeps it
-// to the end. Tests pass a seeded `random`.
+// to the end. `v` 2 marks a game started since 1.4.0, when Guru took over
+// from the old Hard. Tests pass a seeded `random`.
 export function newGame({ mode = 'ai', difficulty = 'medium', players, words = 'enable+added' }, random = Math.random) {
   check(players.length >= 2 && players.length <= 4, 'A game needs two to four players');
   const { first, rounds } = drawForFirst(players.length, random);
   const game = {
-    v: 1,
+    v: 2,
     mode,
     difficulty,
     words,

@@ -20,7 +20,7 @@ import { buildDictionary, isWord, loadWords, loadCommon, WORD_LISTS, DEFAULT_LIS
 import { evaluatePlay, wordCells, BINGO } from './js/rules.js';
 import { newGame, play, exchange, pass, arrange, canExchange, noteHint } from './js/game.js';
 import { generateMoves, placementsFor } from './js/moves.js';
-import { chooseMove, topHints, rankPlays, leaveValue, think } from './js/ai.js';
+import { chooseMove, topHints, rankPlays, leaveValue, think, FULL_LEVELS } from './js/ai.js';
 import { findWords } from './js/finder.js';
 import { SOUNDS, renderSound } from './js/sound.js';
 import { emptyStats, loadStats, recordGame, RECENT } from './js/stats.js';
@@ -634,15 +634,15 @@ function playOut(levels, seed, lists = words) {
   return game;
 }
 
-for (const [levels, seed] of [[['easy', 'medium'], 11], [['hard', 'easy'], 12], [['medium', 'hard', 'easy'], 13]]) {
+for (const [levels, seed] of [[['easy', 'medium'], 11], [['guru', 'easy'], 12], [['medium', 'hard', 'easy'], 13], [['guru', 'hard', 'medium', 'easy'], 15]]) {
   test(`computer: ${levels.join(', ')} play a whole game, legally`, () => {
     const game = playOut(levels, seed);
     notes.push(`computer: ${game.players.map(p => `${p.name} ${p.score}`).join(', ')} in ${game.moves.length} turns`);
   });
 }
 
-test('computer: easy, medium and hard play a whole game with Wordnik + added, legally', () => {
-  const game = playOut(['easy', 'medium', 'hard'], 14, { full: lists['wordnik+added'], common: wordnikCommon });
+test('computer: easy, medium, hard and guru play a whole game with Wordnik + added, legally', () => {
+  const game = playOut(['easy', 'medium', 'hard', 'guru'], 14, { full: lists['wordnik+added'], common: wordnikCommon });
   notes.push(`computer, Wordnik + added: ${game.players.map(p => `${p.name} ${p.score}`).join(', ')} in ${game.moves.length} turns`);
 });
 
@@ -650,9 +650,9 @@ test('computer: with no word to make, it swaps, or passes when the bag is low', 
   const take = tileSource();
   const rack = [...'QZXJKVW'].map(take);
   equal(generateMoves(dict, emptyBoard(), rack).length, 0, 'no plays');
-  const swap = chooseMove([], rack, 50, 'hard');
+  const swap = chooseMove([], rack, 50, 'guru');
   equal([swap.type, swap.ids.length > 0, swap.ids.every(id => rack.includes(id))], ['exchange', true, true], 'swap');
-  equal(chooseMove([], rack, 3, 'hard'), { type: 'pass' }, 'pass');
+  equal(chooseMove([], rack, 3, 'guru'), { type: 'pass' }, 'pass');
 });
 
 test('computer: a blank and an S are worth keeping, a Q and a V are not', () => {
@@ -660,12 +660,29 @@ test('computer: a blank and an S are worth keeping, a Q and a V are not', () => 
   if (!(leaveValue(['E', 'R', 'S']) > leaveValue(['I', 'I', 'U']))) throw new Error('doubled vowels should cost');
 });
 
-test('computer: hard takes the best play when the leaves are alike', () => {
+test('computer: guru takes the best play when the leaves are alike', () => {
   const take = tileSource();
   const rack = [...'CAT'].map(take);
   const moves = generateMoves(dict, emptyBoard(), rack);
-  const choice = chooseMove(moves, rack, 50, 'hard');
+  const choice = chooseMove(moves, rack, 50, 'guru');
   equal([choice.type, choice.score], ['play', Math.max(...moves.map(m => m.score))], 'best');
+});
+
+test('computer: each level keeps to its words, its lengths and its share of the best', () => {
+  const take = tileSource();
+  const rack = [...'RETAINS'].map(take);
+  const moves = generateMoves(dict, emptyBoard(), rack);
+  const scores = moves.map(m => m.score).sort((a, b) => b - a);
+  const random = seeded(31);
+  for (let i = 0; i < 40; i++) {
+    const easy = chooseMove([...moves], rack, 50, 'easy', random);
+    const medium = chooseMove([...moves], rack, 50, 'medium', random);
+    const hard = chooseMove([...moves], rack, 50, 'hard', random);
+    if (easy.word.length > 5) throw new Error(`easy played ${easy.word}`);
+    if (medium.word.length > 7) throw new Error(`medium played ${medium.word}`);
+    if (hard.score < scores[5]) throw new Error(`hard played ${hard.word} ${hard.score}, below its six best`);
+  }
+  equal([FULL_LEVELS.has('easy'), FULL_LEVELS.has('medium'), FULL_LEVELS.has('hard'), FULL_LEVELS.has('guru')], [false, false, true, true], 'who knows every word');
 });
 
 test('hints: the five best plays, one placing of each word, best first', () => {
@@ -820,6 +837,7 @@ test('stats: the recent games list keeps the newest twenty', () => {
 
 test('stats: damaged or old saved data falls back instead of breaking', () => {
   const stats = loadStats({
+    version: 2,
     ai: { hard: { games: '7', wins: 3 }, impossible: { games: 9 } },
     people: { ann: { name: 'Ann', games: 2, wins: 'x' }, bob: 'nonsense' },
     records: { bestPlay: { score: 50, word: 12 } },
@@ -827,12 +845,29 @@ test('stats: damaged or old saved data falls back instead of breaking', () => {
   });
   equal(stats.ai.hard.games, 0, 'text where a number belongs');
   equal(stats.ai.hard.wins, 3, 'good numbers kept');
-  equal(Object.keys(stats.ai), ['easy', 'medium', 'hard'], 'unknown levels dropped');
+  equal(Object.keys(stats.ai), ['easy', 'medium', 'hard', 'guru'], 'unknown levels dropped');
   equal(stats.people, { ann: { name: 'Ann', games: 2, wins: 0, bestGame: 0 } }, 'people');
   equal(stats.records.bestPlay, { score: 50, word: '', name: '', date: '' }, 'record');
   equal(stats.recent, [{ date: '2026-10-01', mode: '', difficulty: '', players: [{ name: 'You', score: 0 }], winners: [0] }], 'recent');
   equal(loadStats(null), emptyStats(), 'nothing saved');
   equal(loadStats('garbage'), emptyStats(), 'garbage saved');
+});
+
+test('stats: from before Guru, the old Hard results move to Guru, once', () => {
+  const old = emptyStats();
+  delete old.version;
+  delete old.ai.guru;
+  recordGame(old, finished({ scores: [300, 250] }), '2026-10-01');
+  recordGame(old, finished({ difficulty: 'easy', scores: [200, 250] }), '2026-10-02');
+  const stats = loadStats(JSON.parse(JSON.stringify(old)));
+  equal(stats.ai.guru, old.ai.hard, 'Hard results now Guru');
+  equal(stats.ai.hard, emptyStats().ai.hard, 'new Hard starts afresh');
+  equal(stats.ai.easy, old.ai.easy, 'Easy unchanged');
+  equal(stats.recent.map(game => game.difficulty), ['easy', 'guru'], 'recent games');
+  equal(stats.version, 2, 'marked');
+  recordGame(stats, finished({ scores: [310, 200] }), '2026-10-03');
+  const again = loadStats(JSON.parse(JSON.stringify(stats)));
+  equal([again.ai.hard.games, again.ai.guru.games], [1, 1], 'not moved twice');
 });
 
 test('stats: a real game is recorded and survives saving', () => {

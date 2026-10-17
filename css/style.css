@@ -264,6 +264,11 @@ svg .line {
   font-weight: 600;
 }
 
+/* Four levels side by side need a little less room on a narrow phone. */
+@media (max-width: 400px) {
+  .choice[data-setting='difficulty'] button { padding-inline: 10px; }
+}
+
 .names {
   display: grid;
   grid-template-columns: 1fr 1fr;

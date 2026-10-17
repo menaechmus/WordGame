@@ -1,6 +1,6 @@
 # Word Game
 
-A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Play against the computer (easy, medium or hard) or pass one device between two to four people. Works with touch, mouse and keyboard, on phones and desktops.
+A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Play against the computer (easy, medium, hard or guru) or pass one device between two to four people. Works with touch, mouse and keyboard, on phones and desktops.
 
 It is a static page: plain HTML, CSS and JavaScript modules, with no build step and no dependencies.
 
@@ -12,7 +12,7 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - The **Play** button shows what the tiles laid so far would score.
 - Each play is counted out on the board: every tile pops as its points are added, a tile on a 2L or 3L square jumps, a word on a 2W or 3W square jumps as a whole, and a play using all seven tiles sets the word bouncing. Tap anywhere to skip the count. Devices set to reduce motion skip it always.
 - **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
-- Against the computer, Easy and Medium keep to everyday words; Hard knows every word in the list and thinks about the tiles it keeps.
+- Against the computer, Easy and Medium keep to everyday words and seldom take the best play. Hard knows every word in the list and plays one of its best scores. Guru also thinks about the tiles it keeps, and swaps when its rack is poor.
 - Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
 - **Hint** lists the five best plays for your tiles, and **Show all** lists every play, best first or A to Z; tap one to lay it on the board. Hints can be switched off on the menu.
 - **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.

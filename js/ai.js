@@ -1,4 +1,4 @@
-// The computer's choice of move at three levels, and the plays offered as
+// The computer's choice of move at four levels, and the plays offered as
 // hints. Every level chooses among the legal plays that moves.js finds; the
 // lower levels are given only everyday words, and choose less carefully.
 
@@ -68,10 +68,10 @@ const swapAllBut = (rack, keep) => {
 
 const pointsLeft = letters => letters.reduce((sum, letter) => sum + VALUES[letter], 0);
 
-// Hard: the most points now plus the value of what is left. With the bag
+// Guru: the most points now plus the value of what is left. With the bag
 // empty the leave is only a debt, and going out is worth a good deal. When
 // nothing scores well and the bag allows, a swap for a better rack.
-function hard(moves, letters, bag) {
+function guru(moves, letters, bag) {
   let best = null;
   let bestValue = -Infinity;
   for (const move of moves) {
@@ -92,24 +92,35 @@ function hard(moves, letters, bag) {
 // The lower levels pick by score alone and never think about what is left
 // on the rack.
 
-// Medium: any one of the few best-scoring plays.
-function medium(moves, letters, bag, random) {
+// Hard: any one of the few best-scoring plays.
+function hard(moves, letters, bag, random) {
   moves.sort((a, b) => b.score - a.score);
-  return moves[Math.floor(random() * Math.min(MEDIUM_TOP, moves.length))];
+  return moves[Math.floor(random() * Math.min(HARD_TOP, moves.length))];
 }
 
-// Easy: a short word, better than most it could find but seldom the best.
-// `EASY_FROM` 0.6 means somewhere in the top 40 per cent.
-function easy(moves, letters, bag, random) {
-  const short = moves.filter(move => move.word.length <= 6);
+// Medium and Easy keep to words no longer than `len` when they can, and pick
+// at random between two points in those plays ranked by score: `from` 0.75
+// and `to` 1 mean somewhere in the top quarter.
+function between(moves, random, len, from, to) {
+  const short = moves.filter(move => move.word.length <= len);
   const pool = (short.length ? short : moves).sort((a, b) => a.score - b.score);
-  return pool[Math.floor(pool.length * (EASY_FROM + random() * (1 - EASY_FROM)))];
+  return pool[Math.min(pool.length - 1, Math.floor(pool.length * (from + random() * (to - from))))];
 }
 
-const MEDIUM_TOP = 6;
-const EASY_FROM = 0.6;
+const medium = (moves, letters, bag, random) => between(moves, random, MEDIUM_LEN, MEDIUM_FROM, 1);
+const easy = (moves, letters, bag, random) => between(moves, random, EASY_LEN, EASY_FROM, EASY_TO);
 
-const LEVELS = { easy, medium, hard };
+const HARD_TOP = 6;
+const MEDIUM_LEN = 7;
+const MEDIUM_FROM = 0.7;
+const EASY_LEN = 5;
+const EASY_FROM = 0.35;
+const EASY_TO = 0.75;
+
+const LEVELS = { easy, medium, hard, guru };
+
+// The levels that know every word in the list; the others keep to everyday words.
+export const FULL_LEVELS = new Set(['hard', 'guru']);
 
 // The computer's turn: { type: 'play', tiles } with tiles as game.play takes
 // them, { type: 'exchange', ids } or { type: 'pass' }.
@@ -138,13 +149,13 @@ export function rankPlays(moves, rack) {
 export const topHints = (moves, rack, count = 5) => rankPlays(moves, rack).slice(0, count);
 
 // Answers one request from the page, given the word lists: { full, common }.
-// Easy and Medium only know everyday words; Hard, hints and the word finder
-// know them all. request: { type: 'move', board, rack, bag, level },
+// Easy and Medium only know everyday words; Hard, Guru, hints and the word
+// finder know them all. request: { type: 'move', board, rack, bag, level },
 // { type: 'hints', board, rack } or { type: 'find', filters }.
 export function think(request, words, random = Math.random) {
   const { type, board, rack, bag, level } = request;
   if (type === 'hints') return rankPlays(generateMoves(words.full, board, rack), rack);
   if (type === 'find') return findWords(words.full, request.filters);
-  const dict = level === 'hard' ? words.full : words.common;
+  const dict = FULL_LEVELS.has(level) ? words.full : words.common;
   return chooseMove(generateMoves(dict, board, rack), rack, bag, level, random);
 }

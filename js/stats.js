@@ -2,7 +2,8 @@
 // here touches storage, so it can be tested directly. Only finished games
 // count, and only people's plays count towards the records and totals.
 
-export const LEVELS = ['easy', 'medium', 'hard'];
+export const LEVELS = ['easy', 'medium', 'hard', 'guru'];
+const VERSION = 2; // 2 since 1.4.0, when Guru took over from the old Hard
 export const RECENT = 20; // finished games kept in the list of recent ones
 
 const levelRow = () => ({ games: 0, wins: 0, losses: 0, ties: 0, points: 0, bestGame: 0, streak: 0, bestStreak: 0, bestMargin: 0 });
@@ -11,6 +12,7 @@ const recentRow = () => ({ date: '', mode: '', difficulty: '', players: [], winn
 
 export function emptyStats() {
   return {
+    version: VERSION,
     ai: Object.fromEntries(LEVELS.map(level => [level, levelRow()])),
     people: {}, // by name, lower case: { name, games, wins, bestGame }
     totals: { games: 0, plays: 0, points: 0, bingos: 0, hints: 0, swaps: 0 },
@@ -35,8 +37,22 @@ function fill(shape, saved) {
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+// Before 1.4.0 there was no Guru: the player then called Hard is Guru now,
+// so its results move across and the new, easier Hard starts afresh.
+function upgrade(saved) {
+  if (!isObject(saved) || saved.version) return saved;
+  const ai = isObject(saved.ai) ? { ...saved.ai, guru: saved.ai.hard } : saved.ai;
+  if (isObject(ai)) delete ai.hard;
+  const recent = Array.isArray(saved.recent)
+    ? saved.recent.map(game => (isObject(game) && game.difficulty === 'hard' ? { ...game, difficulty: 'guru' } : game))
+    : saved.recent;
+  return { ...saved, ai, recent };
+}
+
 export function loadStats(saved) {
+  saved = upgrade(saved);
   const stats = fill(emptyStats(), saved);
+  stats.version = VERSION;
   if (isObject(saved?.people)) {
     for (const [key, person] of Object.entries(saved.people).slice(0, 200)) {
       if (isObject(person)) stats.people[key.slice(0, 40)] = fill(personRow(), person);

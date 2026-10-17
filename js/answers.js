@@ -4,7 +4,7 @@
 // worker cannot start (thinker.js).
 
 import { loadWords, loadCommon } from './dictionary.js';
-import { think } from './ai.js';
+import { think, FULL_LEVELS } from './ai.js';
 
 const lists = new Map(); // list key -> promise of its trie
 const everyday = new Map(); // list key -> promise of its everyday words
@@ -31,6 +31,6 @@ const common = key => kept(everyday, key, async () => loadCommon(await full(key)
 export async function answer(request) {
   const { type, list, level } = request;
   if (type === 'words') return full(list);
-  const easier = type === 'move' && level !== 'hard';
+  const easier = type === 'move' && !FULL_LEVELS.has(level);
   return think(request, { full: await full(list), common: easier ? await common(list) : null });
 }
