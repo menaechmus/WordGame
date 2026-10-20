@@ -18,7 +18,7 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const RELEASED = '20 October 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
@@ -325,10 +325,10 @@ function promptText(result) {
   if (counting) return [counting.text, false];
   if (game.phase === 'over') return ['', false];
   if (covered()) return [`Pass the device to ${nameOf(game.turn)}.`, false];
+  if (linkDown()) return [`Lost touch with ${nameOf(0)}’s phone. Trying again…`, true];
   if (isAi(game.turn)) return [`${nameOf(game.turn)} is thinking…`, false];
   if (wifiGame()) {
     const turn = nameOf(game.turn);
-    if (linkDown()) return [`Lost touch with ${nameOf(0)}’s phone. Trying again…`, true];
     if (sent) return ['Sent. Waiting for the host…', false];
     if (isHost() && !session.room && game.turn !== me) {
       return session.trouble ? [`${session.trouble} Trying again…`, true] : ['Opening the game to the other phones…', false];
@@ -738,11 +738,13 @@ function stopParty() {
 
 // The computer's turn: its question goes to the worker at once, and the
 // answer is played no sooner than AI_DELAY after, so a move never flashes
-// past. Leaving the game drops the question.
+// past. Leaving the game drops the question. The computers of a Wi-Fi game
+// play on the host's phone, each at its own level; the others only see
+// their moves arrive.
 function scheduleAi() {
   clearTimeout(aiTimer);
   thinking = 0;
-  if (!game || game.phase !== 'play' || !isAi(game.turn)) return;
+  if (!game || game.phase !== 'play' || !isAi(game.turn) || isGuest()) return;
   const question = (thinking = ++questions);
   const seat = game.turn;
   const asked = performance.now();
@@ -762,7 +764,8 @@ function scheduleAi() {
       }, true);
     }, Math.max(0, AI_DELAY - (performance.now() - asked)));
   };
-  ask({ type: 'move', list: dictKey, board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level: game.difficulty }).then(
+  const level = game.players[seat].level ?? game.difficulty;
+  ask({ type: 'move', list: dictKey, board: game.board, rack: game.players[seat].rack, bag: game.bag.length, level }).then(
     answered,
     () => answered({ type: 'pass' }),
   );
@@ -1375,6 +1378,7 @@ function endWifi() {
   session = null;
   storeWifi();
   if (ending.role === 'host') {
+    stopAi(); // its computers stop thinking
     // The room outlasts the goodbye a moment: closing it hangs up at once.
     ending.host.close('ended');
     setTimeout(() => ending.room?.close(), 1000);
@@ -1642,6 +1646,7 @@ function resume() {
     $('table').hidden = false;
     render();
     keepAwake(true);
+    if (!thinking && !counting) scheduleAi();
     return;
   }
   const saved = load(GAME_KEY);
@@ -1749,12 +1754,15 @@ function drawWifi() {
   $('btn-share').hidden = !code;
   $('join-code').hidden = !(wifiBox === 'join' && !guest);
   $('wifi-players').hidden = !listed;
+  // Computers are marked as such, and the host can take them out again.
   const mine = hosting ? 0 : me;
-  $('wifi-players').innerHTML = listed
-    ? players
-        .map((player, seat) => `<li${player.here ? '' : ' class="away"'}>${dot(seat)}${escapeHtml(player.name)}${seat === mine ? ' <span class="muted">(you)</span>' : ''}</li>`)
-        .join('')
-    : '';
+  const entry = (player, seat) => {
+    const label = seat === mine ? '(you)' : player.ai ? 'computer' : '';
+    const remove = hosting && player.ai ? `<button class="remove" data-remove="${seat}" aria-label="Take out ${escapeHtml(player.name)}">×</button>` : '';
+    return `<li${player.here ? '' : ' class="away"'}>${dot(seat)}<span class="who">${escapeHtml(player.name)}${label ? ` <span class="muted">${label}</span>` : ''}</span>${remove}</li>`;
+  };
+  $('wifi-players').innerHTML = listed ? players.map(entry).join('') : '';
+  $('wifi-computers').hidden = !(hosting && session.room && players.length < MAX_PLAYERS);
   $('wifi-status').textContent = status;
   $('wifi-status').classList.toggle('warn', warn);
   $('btn-wifi-go').hidden = !go;
@@ -1796,9 +1804,11 @@ function playersFor() {
   return settings.names.slice(0, settings.players).map((name, i) => ({ name: name.trim() || `Player ${i + 1}` }));
 }
 
+// A Wi-Fi game goes on while its host looks at the menu: its computers keep
+// playing, as the other phones are waiting for them.
 function showMenu() {
   input.cancel();
-  stopAi();
+  if (!isHost()) stopAi();
   skipCount();
   stopParty();
   counting = null;
@@ -1837,6 +1847,7 @@ function showMenu() {
   for (const id of ['table', 'gameover', ...DIALOGS]) $(id).hidden = true;
   $('menu').hidden = false;
   drainInbox();
+  if (isHost() && !thinking && !counting) scheduleAi(); // a count cut short never called it
 }
 
 // A game is played with the word list it was started with; one saved before
@@ -1904,6 +1915,15 @@ $('btn-resume').addEventListener('click', resume);
 $('btn-host').addEventListener('click', hostGame);
 $('btn-join').addEventListener('click', () => openJoin(waitingCode));
 $('btn-share').addEventListener('click', shareLink);
+// The host seats a computer player at the level tapped, or takes one out.
+$('wifi-computers').addEventListener('click', event => {
+  const button = event.target.closest('[data-level]');
+  if (button && session?.role === 'host') session.host.addComputer(button.dataset.level);
+});
+$('wifi-players').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove]');
+  if (button && session?.role === 'host') session.host.removeComputer(Number(button.dataset.remove));
+});
 $('btn-wifi-cancel').addEventListener('click', cancelWifi);
 $('btn-wifi-go').addEventListener('click', () => {
   if (wifiBox === 'ended') cancelWifi();

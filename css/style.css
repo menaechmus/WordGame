@@ -1154,12 +1154,40 @@ svg .line {
 }
 
 .wifi-players li {
-  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 2px 4px 2px 12px;
   border-radius: 8px;
   background: var(--panel);
 }
 
 .wifi-players li.away { opacity: 0.45; }
+
+/* Takes a computer player out of the lobby. */
+.wifi-players .remove {
+  min-width: 32px;
+  min-height: 32px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+/* The host seats a computer player at the level tapped. */
+.wifi-computers {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.wifi-computers .choice button {
+  padding-inline: 10px;
+  color: var(--ink);
+}
 
 .wifi-status { min-height: 1.4em; color: var(--muted); }
 .wifi-status.warn { color: var(--warn); }

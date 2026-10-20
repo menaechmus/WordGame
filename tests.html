@@ -448,6 +448,14 @@ test('game: a tile off the board is refused, whatever sent it', () => {
   equal(JSON.stringify(game), before, 'unchanged');
 });
 
+test('game: a computer in a Wi-Fi game keeps its own level', () => {
+  const players = [{ name: 'Hana' }, { name: 'Guru', ai: true, level: 'guru' }, { name: 'Easy', ai: true, level: 'easy' }];
+  const game = newGame({ mode: 'net', players }, seeded(9));
+  equal(game.players.map(player => [player.name, player.ai, player.level ?? null]), [['Hana', false, null], ['Guru', true, 'guru'], ['Easy', true, 'easy']], 'levels');
+  const alone = newGame({ mode: 'ai', players: [{ name: 'You' }, { name: 'Computer', ai: true }] }, seeded(9));
+  equal('level' in alone.players[1], false, 'against the computer alone, the game\'s difficulty says it');
+});
+
 test('game: a blank needs a letter', () => {
   const game = riggedGame('aTEN');
   const placements = layFromRack(game, 'aT', 'H8', true);
@@ -865,6 +873,16 @@ test('stats: a Wi-Fi game puts everyone between people, but only this phone\'s p
   equal([stats.recent[0].mode, stats.recent[0].difficulty], ['net', ''], 'recent');
 });
 
+test('stats: a Wi-Fi game leaves its computers out of the table between people', () => {
+  const stats = emptyStats();
+  const game = finished({ mode: 'net', names: ['Hana', 'Guru'], scores: [200, 300], plays: [[0, 'QUIZ', 44], [1, 'ZAX', 70]] });
+  game.players[1].ai = true;
+  recordGame(stats, game, '2026-10-20', 0);
+  equal([Object.keys(stats.people), stats.people.hana.wins, stats.totals.plays], [['hana'], 0, 1], 'Hana alone, and she lost');
+  equal(stats.recent[0].players, [{ name: 'Hana', score: 200 }, { name: 'Guru', score: 300 }], 'the computer in recent games');
+  equal(stats.ai.guru.games, 0, 'not a game against the computer alone');
+});
+
 test('stats: the recent games list keeps the newest twenty', () => {
   const stats = emptyStats();
   for (let i = 0; i < 25; i++) recordGame(stats, finished({ scores: [100 + i, 50] }), `2026-10-${String(i + 1).padStart(2, '0')}`);
@@ -1097,6 +1115,39 @@ test('wifi: a guest keeps its own order for its rack, and knows a state it has h
   equal(sameState(game, { id: 'a', moves: [1, 2], phase: 'over' }), false, 'ended');
   equal(sameState(game, { id: 'b', moves: [1, 2], phase: 'play' }), false, 'another game');
   equal(sameState(null, game), false, 'no game yet');
+});
+
+await testAsync('wifi: the host seats computers in the lobby, named by their level, and they count towards four', async () => {
+  const { host, guest } = wifiTable();
+  const gus = guest('Gus');
+  await tick();
+  equal([host.addComputer('guru'), host.addComputer('guru')], [true, true], 'two added');
+  equal(host.players().map(player => player.name), ['Hana', 'Gus', 'Guru', 'Guru 2'], 'names');
+  equal(host.addComputer('easy'), false, 'no room for a fifth');
+  const late = guest('Ann');
+  await tick();
+  equal(late.last('denied').why, 'full', 'nor for a person');
+  equal(gus.last('lobby').players[2], { name: 'Guru', here: true, ai: true, level: 'guru' }, 'Gus sees the computer');
+  equal([host.removeComputer(1), host.removeComputer(3)], [false, true], 'a person is not taken out, a computer is');
+  guest('guru', 'another tab');
+  await tick();
+  equal(host.players().map(player => player.name), ['Hana', 'Gus', 'Guru', 'guru 2'], 'a person who wants the name gets another');
+  equal(host.begin(), [{ name: 'Hana' }, { name: 'Gus' }, { name: 'Guru', ai: true, level: 'guru' }, { name: 'guru 2' }], 'as newGame takes them');
+  equal(host.away(), [false, false, false, false], 'a computer is never away');
+  equal(host.saved()[2], { name: 'Guru', token: null, ai: true, level: 'guru' }, 'saved with its level');
+  equal(host.addComputer('easy'), false, 'none added once started');
+});
+
+await testAsync('wifi: a reopened game keeps its computers, whose seats nobody can take', async () => {
+  const seats = [{ name: 'Hana', token: null }, { name: 'Gus', token: 'tab1' }, { name: 'Easy', token: null, ai: true, level: 'easy' }];
+  const { host, guest } = wifiTable({ seats });
+  equal(host.away(), [false, true, false], 'the computer is there, Gus is not');
+  const pretender = guest('Easy', 'tab9');
+  await tick();
+  equal(pretender.last('denied').why, 'started', 'nobody takes the computer\'s seat by its name');
+  guest('Gus', 'tab1');
+  await tick();
+  equal([host.away(), host.players()[2]], [[false, false, false], { name: 'Easy', here: true, ai: true, level: 'easy' }], 'Gus back, the computer kept');
 });
 
 // A guest dialling a host over in-memory links, as net.js would.

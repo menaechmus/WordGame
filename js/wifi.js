@@ -87,9 +87,11 @@ export function deniedText({ why, version }, ours) {
 
 // ---- The host -------------------------------------------------------------
 
-// The host is seat 0, and the others sit in the order they joined. `seats`
-// are a saved game's, as `saved()` gave them, when the game is reopened:
-// its players then count as away until they come back.
+// The host is seat 0, and the others sit in the order they joined. The host
+// may also seat computer players, { ai: true, level }, which play from the
+// host's phone and so are always there. `seats` are a saved game's, as
+// `saved()` gave them, when the game is reopened: its people then count as
+// away until they come back.
 //
 // onmove(seat, move) hears each guest's move (cleaned, see cleanMove); the
 // page runs it, then calls share() or refuse(). onchange({ seat, joined })
@@ -97,9 +99,16 @@ export function deniedText({ why, version }, ours) {
 export function createHost({ name, version, seats = null, onmove, onchange = () => {} }) {
   let started = Boolean(seats);
   let ended = false;
-  let list = (seats ?? [{ name, token: null }]).map(seat => ({ name: cleanName(seat.name) || 'Host', token: seat.token ?? null, link: null }));
+  let list = (seats ?? [{ name, token: null }]).map(seat => ({
+    name: cleanName(seat.name) || 'Host',
+    token: seat.token ?? null,
+    link: null,
+    ...(seat.ai ? { ai: true, level: seat.level } : {}),
+  }));
 
-  const here = i => i === 0 || Boolean(list[i].link);
+  const here = i => i === 0 || Boolean(list[i].ai) || Boolean(list[i].link);
+  // A person's seat, which a returning phone may take back.
+  const theirs = (seat, i) => i > 0 && !seat.ai;
   const seatOf = link => list.findIndex(seat => seat.link === link);
 
   function sendLobby() {
@@ -120,8 +129,8 @@ export function createHost({ name, version, seats = null, onmove, onchange = () 
     const token = typeof message.token === 'string' ? message.token.slice(0, 40) : '';
     if (message.version !== version) return deny(link, 'version');
     if (!name || !token) return deny(link, 'name');
-    let seat = list.findIndex((other, i) => i > 0 && other.token === token);
-    if (seat < 0 && started) seat = list.findIndex((other, i) => i > 0 && !other.link && other.name.toLowerCase() === name.toLowerCase());
+    let seat = list.findIndex((other, i) => theirs(other, i) && other.token === token);
+    if (seat < 0 && started) seat = list.findIndex((other, i) => theirs(other, i) && !other.link && other.name.toLowerCase() === name.toLowerCase());
     if (seat < 0) {
       if (started) return deny(link, 'started');
       if (list.length >= MAX_PLAYERS) return deny(link, 'full');
@@ -179,8 +188,26 @@ export function createHost({ name, version, seats = null, onmove, onchange = () 
       };
       link.onclose = () => dropped(link);
     },
-    players: () => list.map((seat, i) => ({ name: seat.name, here: here(i) })),
+    players: () => list.map((seat, i) => ({ name: seat.name, here: here(i), ...(seat.ai ? { ai: true, level: seat.level } : {}) })),
     away: () => list.map((seat, i) => !here(i)),
+    // A computer player, in the lobby, named after its level: "Guru", or
+    // "Guru 2" for a second one. False when there is no room.
+    addComputer(level) {
+      if (started || list.length >= MAX_PLAYERS) return false;
+      const name = uniqueName(`${level[0].toUpperCase()}${level.slice(1)}`, list.map(seat => seat.name));
+      list.push({ name, token: null, link: null, ai: true, level });
+      sendLobby();
+      onchange({ seat: list.length - 1, joined: true });
+      return true;
+    },
+    // Takes a computer player out of the lobby again.
+    removeComputer(seat) {
+      if (started || !list[seat]?.ai) return false;
+      list.splice(seat, 1);
+      sendLobby();
+      onchange({ seat, joined: false });
+      return true;
+    },
     // Back to the lobby, for another game: whoever has gone loses their
     // seat, and new players may join again.
     reopen() {
@@ -192,10 +219,11 @@ export function createHost({ name, version, seats = null, onmove, onchange = () 
     begin() {
       list = list.filter((seat, i) => here(i));
       started = true;
-      return list.map(seat => ({ name: seat.name }));
+      return list.map(({ name, ai, level }) => (ai ? { name, ai, level } : { name }));
     },
-    // For the saved game, so that it can be reopened: names and tokens.
-    saved: () => list.map(({ name, token }) => ({ name, token })),
+    // For the saved game, so that it can be reopened: names and tokens, and
+    // the computers' levels.
+    saved: () => list.map(({ name, token, ai, level }) => (ai ? { name, token, ai, level } : { name, token })),
     // Each guest's own view of the game, and who is there.
     share(game) {
       const away = host.away();

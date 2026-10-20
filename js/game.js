@@ -36,12 +36,14 @@ function refill(game, player) {
   return drawn;
 }
 
-// `players` is a list of { name, ai }. `words` is the key of the word list
-// the game is played with (see WORD_LISTS in dictionary.js); a game keeps it
-// to the end. `v` 2 marks a game started since 1.4.0, when Guru took over
-// from the old Hard. Tests pass a seeded `random`. The `id` tells one game
-// from the next, for the phones of a Wi-Fi game; it is not drawn from
-// `random`, so a seeded game deals as it always has.
+// `players` is a list of { name, ai }; a computer in a Wi-Fi game also has
+// its own `level`, where against the computer alone `difficulty` says it.
+// `words` is the key of the word list the game is played with (see
+// WORD_LISTS in dictionary.js); a game keeps it to the end. `v` 2 marks a
+// game started since 1.4.0, when Guru took over from the old Hard. Tests
+// pass a seeded `random`. The `id` tells one game from the next, for the
+// phones of a Wi-Fi game; it is not drawn from `random`, so a seeded game
+// deals as it always has.
 export function newGame({ mode = 'ai', difficulty = 'medium', players, words = 'enable+added' }, random = Math.random) {
   check(players.length >= 2 && players.length <= 4, 'A game needs two to four players');
   const { first, rounds } = drawForFirst(players.length, random);
@@ -51,7 +53,7 @@ export function newGame({ mode = 'ai', difficulty = 'medium', players, words = '
     mode,
     difficulty,
     words,
-    players: players.map(({ name, ai = false }) => ({ name, ai, rack: [], score: 0, hints: 0 })),
+    players: players.map(({ name, ai = false, level }) => ({ name, ai, ...(ai && level ? { level } : {}), rack: [], score: 0, hints: 0 })),
     board: emptyBoard(),
     bag: newBag(random),
     turn: first,
