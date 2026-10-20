@@ -73,10 +73,14 @@ export function loadStats(saved) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function recordGame(stats, game, date = today()) {
+// `me` is this phone's seat in a Wi-Fi game. Every player's result goes in
+// the table between people, but only `me`'s plays count in the records and
+// totals: the other phones keep their own.
+export function recordGame(stats, game, date = today(), me = null) {
   const { players, winners } = game;
   const tie = winners.length > 1;
   const people = players.flatMap((player, seat) => (player.ai ? [] : [seat]));
+  const counted = game.mode === 'net' && me !== null ? [me] : people;
 
   if (game.mode === 'ai') {
     const me = people[0];
@@ -112,7 +116,7 @@ export function recordGame(stats, game, date = today()) {
 
   const { totals, records } = stats;
   totals.games++;
-  for (const seat of people) {
+  for (const seat of counted) {
     const { name, score, hints } = players[seat];
     const moves = game.moves.filter(move => move.player === seat);
     const plays = moves.filter(move => move.type === 'play');

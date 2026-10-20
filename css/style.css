@@ -264,9 +264,11 @@ svg .line {
   font-weight: 600;
 }
 
-/* Four levels side by side need a little less room on a narrow phone. */
+/* Four levels side by side, and the three ways to play, need a little less
+   room on a narrow phone. */
 @media (max-width: 400px) {
-  .choice[data-setting='difficulty'] button { padding-inline: 10px; }
+  .choice[data-setting='difficulty'] button,
+  .choice[data-setting='mode'] button { padding-inline: 10px; }
 }
 
 .names {
@@ -287,6 +289,22 @@ svg .line {
 
 .names input::placeholder { color: var(--muted); }
 
+/* One name for a Wi-Fi game, which the other phones see. */
+.wifi-name {
+  flex: 0 1 220px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.wifi-name::placeholder { color: var(--muted); }
+.wifi-name.want { border-color: var(--warn); }
+.wifi-name.want::placeholder { color: var(--warn); }
+
 .menu-actions {
   display: grid;
   gap: 10px;
@@ -303,7 +321,8 @@ svg .line {
     padding-block: 5px;
   }
 
-  .names input { min-height: 38px; }
+  .names input,
+  .wifi-name { min-height: 38px; }
   .list-select { min-height: 34px; }
   .menu-actions { gap: 8px; }
   .menu-actions .btn { min-height: 44px; }
@@ -371,6 +390,9 @@ svg .line {
 }
 
 .chip.active { border-color: var(--gold); }
+
+/* A Wi-Fi player whose phone is out of touch. */
+.chip.away { opacity: 0.45; }
 
 /* How many tiles a player holds: a little tile in the chip's corner, gold
    once the bag is empty and the counts decide when to go out. */
@@ -1087,6 +1109,60 @@ svg .line {
 
 .find-list a:hover { text-decoration: underline; }
 .find-list small { margin-left: 4px; color: var(--muted); }
+
+/* The Wi-Fi box: the host's code as tiles, the code typed to join, and who
+   is in the game. */
+.wifi-code {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  --t: 50px;
+}
+
+.wifi-code .tile:nth-child(odd) { transform: rotate(-3deg); }
+.wifi-code .tile:nth-child(even) { transform: rotate(2.5deg) translateY(2px); }
+
+.join-code {
+  justify-self: center;
+  width: 8.5em;
+  min-height: 52px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.join-code::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+#btn-share { justify-self: center; }
+
+.wifi-players {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.wifi-players li {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.wifi-players li.away { opacity: 0.45; }
+
+.wifi-status { min-height: 1.4em; color: var(--muted); }
+.wifi-status.warn { color: var(--warn); }
 
 .lookup-result { min-height: 1.4em; }
 .lookup-result.good { color: #8fe3a6; font-weight: 600; }

@@ -1,8 +1,8 @@
 # Word Game
 
-A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Play against the computer (easy, medium, hard or guru) or pass one device between two to four people. Works with touch, mouse and keyboard, on phones and desktops.
+A crossword tile game for the browser: a 15 × 15 board with premium squares, 100 letter tiles and a rack of seven. Play against the computer (easy, medium, hard or guru), pass one device between two to four people, or play on your own phones over Wi-Fi. Works with touch, mouse and keyboard, on phones and desktops.
 
-It is a static page: plain HTML, CSS and JavaScript modules, with no build step and no dependencies.
+It is a static page: plain HTML, CSS and JavaScript modules, with no build step. Its one library, PeerJS, is kept in `js/vendor/` and loaded only for Wi-Fi games.
 
 ## Play
 
@@ -14,6 +14,7 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - **Swap** trades tiles with the bag, while it still holds seven. **Pass** ends the turn without a score.
 - Against the computer, Easy and Medium keep to everyday words and seldom take the best play. Hard knows every word in the list and plays one of its best scores. Guru also thinks about the tiles it keeps, and swaps when its rack is poor.
 - Between people, each player's tiles stay face down until their owner presses the button to show them, so the device can be passed round.
+- **Wi-Fi** on the menu lets two to four people play on their own phones (see [Wi-Fi games](#wi-fi-games)). Each types their name. One taps **Host a game**, and a four-letter code appears. The others tap **Join a game** and type it, or open the link that **Share link** sends. The host taps **Start** when everyone is in.
 - **Hint** lists the five best plays for your tiles, and **Show all** lists every play, best first or A to Z; tap one to lay it on the board. Hints can be switched off on the menu.
 - **Word check** on the menu marks words that are not in the list as you lay them. With it off, a word is only checked when you press Play.
 - **Words** (the magnifier in a game, while word check is on, or the button on the menu) checks whether a word is in the list, with a link to its meaning, and finds words: by how they start or end, letters they contain, a pattern with `?` for any letter (`C?T`), or the letters they are made from in any order, `?` again standing for any letter (`RETAIN?`). The fields combine, and the results scroll, sorted A to Z, longest first or by points. Its third tab lists every two- and three-letter word, and the **2 & 3 letters** button in a game opens it straight away.
@@ -27,6 +28,21 @@ It is a static page: plain HTML, CSS and JavaScript modules, with no build step 
 - The **i** button on the menu shows which version is running.
 
 Settings, the game in progress and your statistics are kept in the browser's `localStorage`, so they stay on that device and browser and disappear if its site data is cleared.
+
+## Wi-Fi games
+
+Each person plays on their own phone, and one phone, the host's, keeps the game. It deals the tiles, checks every move and keeps the score. The other phones send it their moves, and it sends each of them the game as that player may see it: their own tiles, but only how many the others hold.
+
+- A browser cannot run a server or find other devices on a network by itself. So, for a few seconds at the start, a free public service, the [PeerJS](https://peerjs.com) cloud server, passes the connection details between the phones. After that the phones are linked directly (WebRTC), and moves go straight across the Wi-Fi. This needs the internet at the start. Everyone has it anyway, because the game itself loads from the web.
+- On a Wi-Fi network that keeps devices apart (guest and hotel networks often do), PeerJS's free relay carries the moves instead. If the PeerJS service is down, Wi-Fi games cannot start, but the other modes are not affected.
+- The host's word list, Hints and Word check apply to everyone in that game. Sound is set on each phone.
+- Screens stay on during a Wi-Fi game, because a phone that goes to sleep drops out.
+- A phone that drops out (it slept, switched apps, reloaded, or lost the Wi-Fi) reconnects by itself and takes back its seat. While it is gone, its score is dimmed on the other phones. On its turn, the host's **Pass** passes for it, so the game need not wait.
+- If the host's page reloads, it reopens the same game under the same code, and the other phones come back by themselves.
+- When it becomes your turn, your phone chimes, and buzzes if it can.
+- At the end each phone records the game in its own **Statistics**. Everyone's result goes under "Between people". Records and totals count only the plays made on that phone. Only the host can start another game.
+- Up to four players, as in any game. A phone running an older copy of the game is asked to reload.
+- PeerJS 1.5.5 (MIT licence, see `js/vendor/LICENSE-peerjs.txt`) is the unchanged `peerjs.min.js` from <https://github.com/peers/peerjs>.
 
 ## Word lists
 
@@ -77,10 +93,13 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/rules.js` | Whether a play is legal, and what it scores |
 | `js/game.js` | Turns, racks, exchanges, passes and the end of the game, as a plain game object and the actions that change it |
 | `js/moves.js` | Every legal play for a rack (the Appel–Jacobson method) |
-| `js/ai.js` | The computer's three levels, and hints |
+| `js/ai.js` | The computer's four levels, and hints |
 | `js/finder.js` | The word finder |
 | `js/worker.js`, `js/thinker.js`, `js/answers.js` | The computer's thinking and the word lists, in a background worker; the page's side of it; and the answers both give |
 | `js/stats.js` | Lifetime statistics |
+| `js/net.js` | Connections between phones for a Wi-Fi game: a room under a four-letter code, and links that carry messages (through PeerJS, or between the tabs of one browser for testing) |
+| `js/wifi.js` | A Wi-Fi game between phones: seats, what each phone may see, and the messages between the host and the others |
+| `js/vendor/` | PeerJS, and its licence |
 | `js/input.js` | Tapping and dragging tiles, for mouse, touch and pen |
 | `js/animate.js` | The count of each play on the board |
 | `js/sound.js` | Sound effects, generated with the Web Audio API (no audio files) |
@@ -88,4 +107,4 @@ Before pushing a change, raise `VERSION` and `RELEASED` at the top of `js/ui.js`
 | `js/celebrate.js` | Fireworks and confetti for a won game |
 | `js/ui.js` | Drawing, the menu and dialogs, turns, zoom, typing and storage |
 | `words/` | The word lists |
-| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, hints, the word finder, statistics, the celebration and sound |
+| `tests.html` | Tests for the tiles, board, word lists, rules, game, move finding, the computer, hints, the word finder, statistics, Wi-Fi games, the celebration and sound |

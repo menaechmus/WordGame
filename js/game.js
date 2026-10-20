@@ -4,7 +4,7 @@
 // happened in game.events.
 
 import { TILES, RACK_SIZE, isBlank, newBag, shuffle, rackValue } from './tiles.js';
-import { emptyBoard } from './board.js';
+import { SQUARES, emptyBoard } from './board.js';
 import { evaluatePlay } from './rules.js';
 
 function check(ok, message) {
@@ -39,12 +39,15 @@ function refill(game, player) {
 // `players` is a list of { name, ai }. `words` is the key of the word list
 // the game is played with (see WORD_LISTS in dictionary.js); a game keeps it
 // to the end. `v` 2 marks a game started since 1.4.0, when Guru took over
-// from the old Hard. Tests pass a seeded `random`.
+// from the old Hard. Tests pass a seeded `random`. The `id` tells one game
+// from the next, for the phones of a Wi-Fi game; it is not drawn from
+// `random`, so a seeded game deals as it always has.
 export function newGame({ mode = 'ai', difficulty = 'medium', players, words = 'enable+added' }, random = Math.random) {
   check(players.length >= 2 && players.length <= 4, 'A game needs two to four players');
   const { first, rounds } = drawForFirst(players.length, random);
   const game = {
     v: 2,
+    id: Math.random().toString(36).slice(2, 10),
     mode,
     difficulty,
     words,
@@ -112,7 +115,8 @@ export function play(game, player, placements, isWord) {
   checkTurn(game, player);
   const ids = placements.map(tile => tile.id);
   checkTiles(game, player, ids);
-  for (const { id, letter } of placements) {
+  for (const { index, id, letter } of placements) {
+    check(Number.isInteger(index) && index >= 0 && index < SQUARES, 'That square is not on the board');
     check(isBlank(id) ? /^[A-Z]$/.test(letter) : letter === TILES[id], 'Every blank needs a letter');
   }
   const result = evaluatePlay(game.board, placements, isWord);
