@@ -18,8 +18,8 @@ import { LEVELS, emptyStats, loadStats, recordGame } from './stats.js';
 
 // Shown in the About box. Bump both with every release: a browser still
 // running a cached copy of this file then shows the old number.
-const VERSION = '1.5.1';
-const RELEASED = '20 October 2026';
+const VERSION = '1.5.2';
+const RELEASED = '5 November 2026';
 
 const AI_DELAY = 800; // the computer takes at least this long over a move
 const CHEER_MS = 3500; // fireworks and confetti before the game-over box appears
@@ -219,6 +219,17 @@ function buildBoard() {
     const label = i === CENTER ? '★' : (LABELS[kind] ?? '');
     return `<div class="${classes}" data-index="${i}" role="img" aria-label="${squareLabel(i, null)}"><span class="label" aria-hidden="true">${label}</span></div>`;
   }).join('');
+}
+
+// The lines between squares, a whole number of screen pixels thick. Where a
+// CSS pixel is not (125% display scaling, most Android phones) a 1px line is
+// drawn one screen pixel thick in some places and two in others, and the
+// thicker lines bunch together so that the board seems to bulge.
+function fitHairline() {
+  const ratio = devicePixelRatio || 1;
+  document.documentElement.style.setProperty('--hair', `${Math.max(1, Math.round(ratio)) / ratio}px`);
+  // Browser zoom, or moving the window to another screen, changes the ratio.
+  matchMedia(`(resolution: ${ratio}dppx)`).addEventListener('change', fitHairline, { once: true });
 }
 
 // What a screen reader says for a square: "H8, double word" or "H8, Q".
@@ -2149,6 +2160,7 @@ document.addEventListener('keydown', event => {
   }
 });
 
+fitHairline();
 showMenu();
 
 // A tab that was in a Wi-Fi game (reloaded, or brought back by the browser)

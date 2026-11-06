@@ -29,6 +29,9 @@
   --seat3: #f2c94c;
 
   --pad: 8px;
+  /* The lines between the board's squares. ui.js makes this a whole number
+     of screen pixels, so that every line is drawn the same thickness. */
+  --hair: 1px;
   /* The board's side: the full width of a phone, unless the screen is too
      short for the bars, the rack and the buttons as well. */
   --side: min(100vw - 2 * var(--pad), 100vh - 252px, 720px);
@@ -507,18 +510,21 @@ svg .line {
 
 /* Rows and columns each take an equal share, whatever their squares hold:
    left to size themselves, the row with the larger centre star grew taller
-   than the rest. */
+   than the rest. The lines between them are a whole number of screen pixels
+   (--hair): a plain 1px is drawn thicker in some places than others on a
+   scaled screen, and the thicker lines bunch together so that the board
+   seems to bulge. */
 .board {
   display: grid;
   grid-template-columns: repeat(15, minmax(0, 1fr));
   grid-template-rows: repeat(15, minmax(0, 1fr));
-  gap: 1px;
+  gap: var(--hair);
   width: calc(var(--side) * var(--zoom));
   height: calc(var(--side) * var(--zoom));
-  padding: 2px;
+  padding: calc(2 * var(--hair));
   border-radius: 6px;
   background: var(--grid);
-  --t: calc((var(--side) * var(--zoom) - 18px) / 15);
+  --t: calc((var(--side) * var(--zoom) - 18 * var(--hair)) / 15);
 }
 
 .cell {
